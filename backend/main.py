@@ -497,6 +497,20 @@ Icon values must be one of: zap, check, lightbulb, thermometer, clock, trending-
     }
 
 
+# ── Keep-alive: ping ourselves every 10 min so Render free tier doesn't sleep ─
+import threading, urllib.request
+
+def _keep_alive():
+    while True:
+        _time.sleep(600)
+        try:
+            urllib.request.urlopen("https://joulebuddy-backend.onrender.com/api/health")
+        except Exception:
+            pass
+
+threading.Thread(target=_keep_alive, daemon=True).start()
+
+
 # ── Run directly with: python main.py ────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn

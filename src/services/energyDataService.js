@@ -13,7 +13,7 @@ const CHART_COLORS = ["#FF6B6B", "#FFB84D", "#4ECDC4", "#A78BFA"];
 
 // ── API-based fetching ──────────────────────────────────────────────────────
 
-function fetchWithTimeout(url, timeoutMs = 5000) {
+function fetchWithTimeout(url, timeoutMs = 60000) {
   return Promise.race([
     fetch(url),
     new Promise((_, reject) =>
