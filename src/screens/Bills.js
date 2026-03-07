@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   StatusBar,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -21,8 +22,8 @@ import {
 import GreenPointsHeader from '../components/GreenPointsHeader';
 import { COLORS, GRADIENTS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../theme/theme';
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
-const BILLS = [
+// ─── Initial data ─────────────────────────────────────────────────────────────
+const INITIAL_BILLS = [
   {
     id: 'b1',
     month: 'October 2025',
@@ -63,7 +64,7 @@ const PAYMENT_METHODS = [
 ];
 
 // ─── BillRow ──────────────────────────────────────────────────────────────────
-function BillRow({ bill, expanded, onToggle }) {
+function BillRow({ bill, expanded, onToggle, onPay, onDownload }) {
   const isDue = bill.status === 'due';
 
   return (
@@ -115,12 +116,12 @@ function BillRow({ bill, expanded, onToggle }) {
             </View>
           ))}
           {isDue && (
-            <TouchableOpacity style={styles.payBtn} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.payBtn} activeOpacity={0.8} onPress={() => onPay(bill)}>
               <Text style={styles.payBtnText}>Pay Now</Text>
               <ArrowUpRight size={16} color={COLORS.textWhite} strokeWidth={2.5} />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.downloadRow} activeOpacity={0.75}>
+          <TouchableOpacity style={styles.downloadRow} activeOpacity={0.75} onPress={() => onDownload(bill)}>
             <Download size={14} color={COLORS.mint} strokeWidth={2} />
             <Text style={styles.downloadText}>Download PDF</Text>
           </TouchableOpacity>
@@ -132,8 +133,41 @@ function BillRow({ bill, expanded, onToggle }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function BillsScreen() {
+  const [bills, setBills] = useState(INITIAL_BILLS);
   const [expandedId, setExpandedId] = useState('b1');
   const toggle = (id) => setExpandedId((prev) => (prev === id ? null : id));
+
+  const outstanding = bills.find((b) => b.status === 'due');
+
+  function handlePay(bill) {
+    Alert.alert(
+      'Confirm Payment',
+      `Pay $${bill.amount.toFixed(2)} for ${bill.month}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Pay Now',
+          onPress: () => {
+            setBills((prev) =>
+              prev.map((b) => (b.id === bill.id ? { ...b, status: 'paid' } : b)),
+            );
+            Alert.alert('Payment Successful', `$${bill.amount.toFixed(2)} has been paid. A receipt has been sent to your email.`);
+          },
+        },
+      ],
+    );
+  }
+
+  function handleDownload(bill) {
+    Alert.alert('PDF Downloaded', `${bill.month} bill has been saved to your Downloads folder.`);
+  }
+
+  function handleMethodPress(method) {
+    const details = method.id === 'm1'
+      ? 'OCBC Debit Card\nEnding in ···4521\nExpires 12/27\n\nDefault payment method'
+      : 'PayNow\nLinked to +65 9123 4567\n\nInstant bank transfer';
+    Alert.alert(method.label, details);
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -146,28 +180,38 @@ export default function BillsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Outstanding banner — gradient card */}
-        <LinearGradient
-          colors={GRADIENTS.brand}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.outstandingBanner}
-        >
-          <View>
-            <Text style={styles.outLabel}>Current Outstanding</Text>
-            <Text style={styles.outAmount}>$142.50</Text>
-            <Text style={styles.outDue}>Due by 15 Nov 2025</Text>
+        {outstanding ? (
+          <LinearGradient
+            colors={GRADIENTS.brand}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.outstandingBanner}
+          >
+            <View>
+              <Text style={styles.outLabel}>Current Outstanding</Text>
+              <Text style={styles.outAmount}>${outstanding.amount.toFixed(2)}</Text>
+              <Text style={styles.outDue}>Due by {outstanding.dueDate}</Text>
+            </View>
+            <TouchableOpacity style={styles.payNowBtn} activeOpacity={0.85} onPress={() => handlePay(outstanding)}>
+              <Text style={styles.payNowText}>Pay Now</Text>
+              <ArrowUpRight size={16} color={COLORS.mint} strokeWidth={2.5} />
+            </TouchableOpacity>
+          </LinearGradient>
+        ) : (
+          <View style={styles.allPaidBanner}>
+            <CheckCircle size={24} color={COLORS.mint} strokeWidth={2} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.allPaidTitle}>All Paid!</Text>
+              <Text style={styles.allPaidSub}>You have no outstanding bills.</Text>
+            </View>
           </View>
-          <TouchableOpacity style={styles.payNowBtn} activeOpacity={0.85}>
-            <Text style={styles.payNowText}>Pay Now</Text>
-            <ArrowUpRight size={16} color={COLORS.mint} strokeWidth={2.5} />
-          </TouchableOpacity>
-        </LinearGradient>
+        )}
 
         {/* Payment methods */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Saved Payment Methods</Text>
           {PAYMENT_METHODS.map(({ id, label, icon: Icon }) => (
-            <TouchableOpacity key={id} style={styles.methodRow} activeOpacity={0.75}>
+            <TouchableOpacity key={id} style={styles.methodRow} activeOpacity={0.75} onPress={() => handleMethodPress({ id, label })}>
               <View style={styles.methodIcon}>
                 <Icon size={18} color={COLORS.mint} strokeWidth={2} />
               </View>
@@ -180,12 +224,14 @@ export default function BillsScreen() {
         {/* Bill history */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Bill History</Text>
-          {BILLS.map((bill) => (
+          {bills.map((bill) => (
             <BillRow
               key={bill.id}
               bill={bill}
               expanded={expandedId === bill.id}
               onToggle={() => toggle(bill.id)}
+              onPay={handlePay}
+              onDownload={handleDownload}
             />
           ))}
         </View>
@@ -221,6 +267,18 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
   },
   payNowText: { ...TYPOGRAPHY.bodyMd, color: COLORS.mint, fontWeight: '700' },
+  allPaidBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: COLORS.mintLight,
+    borderRadius: RADIUS.card,
+    padding: SPACING.lg,
+    borderWidth: 1.5,
+    borderColor: COLORS.mint,
+  },
+  allPaidTitle: { ...TYPOGRAPHY.h4, color: COLORS.mintDark },
+  allPaidSub:   { ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginTop: 2 },
 
   // Section
   section:      { gap: SPACING.sm },

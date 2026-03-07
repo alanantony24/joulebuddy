@@ -9,9 +9,13 @@ import {
   TouchableOpacity,
   Animated,
   Platform,
+  Modal,
+  Pressable,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
+import * as ImagePicker from "expo-image-picker";
 import {
   Menu,
   Bell,
@@ -25,6 +29,12 @@ import {
   TrendingDown,
   Sparkles,
   Bot,
+  X,
+  Home as HomeIcon,
+  Receipt,
+  BatteryCharging,
+  User,
+  Flame,
 } from "lucide-react-native";
 import StyledCard from "../components/StyledCard";
 import StatCard from "../components/StatCard";
@@ -37,68 +47,20 @@ import {
   TYPOGRAPHY,
 } from "../theme/theme";
 import { useGP } from "../context/GPContext";
+import { generateEnergyData, computeQuickStats } from "../services/energyDataService";
+import { NOTIFICATIONS } from "../services/notificationData";
+import { USER_PROFILE } from "../data/profileData";
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 44;
 
-// ── Per-period consumption data (recorded 00:00 – 23:59 daily) ──────────────
+// ── Notification icon resolver ───────────────────────────────────────────────
 
-const CHART_COLORS = ["#FF6B6B", "#FFB84D", "#4ECDC4", "#A78BFA"];
-
-const PERIOD_DATA = {
-  daily: {
-    label: "Today",
-    badge: "7 Mar 2026",
-    subtitle: "Today by category",
-    data: [
-      { name: "Cooling",  value: 5.2,  pct: 45, color: CHART_COLORS[0] },
-      { name: "Laundry",  value: 2.9,  pct: 25, color: CHART_COLORS[1] },
-      { name: "Kitchen",  value: 2.3,  pct: 20, color: CHART_COLORS[2] },
-      { name: "Baseload", value: 1.2,  pct: 10, color: CHART_COLORS[3] },
-    ],
-    insight: {
-      text1: (dom) =>
-        `Cooling appliances accounted for the highest electricity usage today (${dom.pct}%).`,
-      text2: "Most of this usage occurred between 7 PM – 10 PM. This likely corresponds to air conditioning during evening hours.",
-      peak: "7 PM – 10 PM",
-      savings: "$0.14/day",
-    },
-  },
-  weekly: {
-    label: "This Week",
-    badge: "1 – 7 Mar",
-    subtitle: "This week by category",
-    data: [
-      { name: "Cooling",  value: 36, pct: 44, color: CHART_COLORS[0] },
-      { name: "Laundry",  value: 21, pct: 26, color: CHART_COLORS[1] },
-      { name: "Kitchen",  value: 16, pct: 20, color: CHART_COLORS[2] },
-      { name: "Baseload", value: 8,  pct: 10, color: CHART_COLORS[3] },
-    ],
-    insight: {
-      text1: (dom) =>
-        `Cooling appliances were your top consumer this week at ${dom.pct}% of total usage.`,
-      text2: "Usage peaked on weekday evenings (Mon – Fri, 7 PM – 10 PM). Weekend cooling was 30% lower.",
-      peak: "Weekday evenings",
-      savings: "$0.98/week",
-    },
-  },
-  monthly: {
-    label: "This Month",
-    badge: "Mar 2026",
-    subtitle: "This month by category",
-    data: [
-      { name: "Cooling",  value: 154, pct: 45, color: CHART_COLORS[0] },
-      { name: "Laundry",  value: 85,  pct: 25, color: CHART_COLORS[1] },
-      { name: "Kitchen",  value: 68,  pct: 20, color: CHART_COLORS[2] },
-      { name: "Baseload", value: 34,  pct: 10, color: CHART_COLORS[3] },
-    ],
-    insight: {
-      text1: (dom) =>
-        `Cooling appliances accounted for ${dom.pct}% of your electricity this month — the largest category.`,
-      text2: "Your cooling usage is 8% higher than the neighbourhood average. Adjusting AC temperature could yield significant savings.",
-      peak: "Evenings, 7 – 10 PM",
-      savings: "$4.20/month",
-    },
-  },
+const NOTIF_ICONS = {
+  Receipt: Receipt,
+  Leaf: Leaf,
+  Zap: Zap,
+  Flame: Flame,
+  Sparkles: Sparkles,
 };
 
 // ── Donut chart (react-native-svg) ───────────────────────────────────────────
@@ -211,13 +173,13 @@ const seg = StyleSheet.create({
   },
 });
 
-// ── Quick stats data ────────────────────────────────────────────────────────
+// ── Quick stats icon mapping ────────────────────────────────────────────────
 
-const QUICK_STATS = [
-  { Icon: Zap,        label: "Avg. Efficiency", value: "87%",    accent: COLORS.mint,    bg: COLORS.mintPale },
-  { Icon: DollarSign, label: "Total Saved",     value: "$24.80", accent: "#14b8a6",      bg: "#F0FDFA" },
-  { Icon: Leaf,       label: "Carbon Offset",   value: "42 kg",  accent: COLORS.mint,    bg: COLORS.mintLight },
-  { Icon: Clock,      label: "Peak Hours",      value: "2–4 PM", accent: COLORS.warning, bg: COLORS.warningLight },
+const STAT_ICONS = [
+  { Icon: Zap,        accent: COLORS.mint,    bg: COLORS.mintPale },
+  { Icon: DollarSign, accent: "#14b8a6",      bg: "#F0FDFA" },
+  { Icon: Leaf,       accent: COLORS.mint,    bg: COLORS.mintLight },
+  { Icon: Clock,      accent: COLORS.warning, bg: COLORS.warningLight },
 ];
 
 // ── Lightweight fade-up wrapper ──────────────────────────────────────────────
@@ -245,12 +207,22 @@ function FadeInView({ delay = 0, translateFrom = 20, duration = 420, style, chil
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function HomeScreen() {
+export default function HomeScreen({ navigation }) {
   const [taskDone, setTaskDone] = useState(false);
   const [period, setPeriod] = useState("daily");
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [notifVisible, setNotifVisible] = useState(false);
+  const [notifRead, setNotifRead] = useState(false);
   const { totalGP, completeQuest, completedQuestIds } = useGP();
 
   const greenUpDone = taskDone || completedQuestIds.has("ac25");
+
+  // Energy data from service (generated once per session)
+  const PERIOD_DATA = useMemo(() => generateEnergyData(), []);
+  const quickStatsData = useMemo(
+    () => computeQuickStats(PERIOD_DATA.monthly.data),
+    [PERIOD_DATA],
+  );
 
   // Derived data from selected period
   const current = PERIOD_DATA[period];
@@ -264,12 +236,37 @@ export default function HomeScreen() {
     [chartData],
   );
 
-  function handleGreenUpVerify() {
-    if (!greenUpDone) {
+  async function handleGreenUpVerify() {
+    if (greenUpDone) return;
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission Needed", "Camera access is required to verify this quest.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.75,
+    });
+    if (!result.canceled) {
       setTaskDone(true);
       completeQuest("ac25", 10);
     }
   }
+
+  function handleOpenNotifications() {
+    setNotifVisible(true);
+    setNotifRead(true);
+  }
+
+  const NAV_ITEMS = [
+    { label: "Home",     screen: "Home",       Icon: HomeIcon },
+    { label: "Bills",    screen: "Bills",      Icon: Receipt },
+    { label: "EV",       screen: "EV",         Icon: BatteryCharging },
+    { label: "Buddy",    screen: "JouleBuddy", Icon: Bot },
+    { label: "Profile",  screen: "Profile",    Icon: User },
+  ];
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -283,18 +280,18 @@ export default function HomeScreen() {
         style={styles.header}
       >
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8} onPress={() => setMenuVisible(true)}>
             <Menu size={20} color={COLORS.textHeading} strokeWidth={2} />
           </TouchableOpacity>
           <View style={styles.greetingBlock}>
-            <Text style={styles.greetingText}>Hi, Alex 👋</Text>
+            <Text style={styles.greetingText}>Hi, {USER_PROFILE.firstName} 👋</Text>
             <Text style={styles.subText}>Welcome back</Text>
           </View>
           <View>
-            <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8} onPress={handleOpenNotifications}>
               <Bell size={20} color={COLORS.textHeading} strokeWidth={2} />
             </TouchableOpacity>
-            <View style={styles.notifDot} />
+            {!notifRead && <View style={styles.notifDot} />}
           </View>
         </View>
         <View style={styles.gpRow}>
@@ -474,17 +471,20 @@ export default function HomeScreen() {
         <View>
           <Text style={styles.sectionTitle}>Quick Stats</Text>
           <View style={styles.statsGrid}>
-            {QUICK_STATS.map(({ Icon, label, value, accent, bg }, i) => (
-              <StatCard
-                key={label}
-                style={styles.halfCard}
-                icon={<Icon size={16} color={accent} strokeWidth={2.2} />}
-                label={label}
-                value={value}
-                accent={bg}
-                delay={320 + i * 60}
-              />
-            ))}
+            {quickStatsData.map(({ label, value }, i) => {
+              const { Icon, accent, bg } = STAT_ICONS[i];
+              return (
+                <StatCard
+                  key={label}
+                  style={styles.halfCard}
+                  icon={<Icon size={16} color={accent} strokeWidth={2.2} />}
+                  label={label}
+                  value={value}
+                  accent={bg}
+                  delay={320 + i * 60}
+                />
+              );
+            })}
           </View>
         </View>
 
@@ -502,6 +502,82 @@ export default function HomeScreen() {
           </View>
         </FadeInView>
       </ScrollView>
+
+      {/* ── Menu Drawer Modal ── */}
+      <Modal visible={menuVisible} animationType="fade" transparent onRequestClose={() => setMenuVisible(false)}>
+        <View style={styles.drawerOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuVisible(false)} />
+          <View style={styles.drawerPanel}>
+            {/* User info */}
+            <View style={styles.drawerUserSection}>
+              <View style={styles.drawerAvatar}>
+                <Text style={styles.drawerInitials}>{USER_PROFILE.initials}</Text>
+              </View>
+              <Text style={styles.drawerName}>{USER_PROFILE.name}</Text>
+              <Text style={styles.drawerEmail}>{USER_PROFILE.email}</Text>
+              <View style={styles.drawerGpPill}>
+                <Leaf size={12} color={COLORS.mintDark} strokeWidth={2.5} />
+                <Text style={styles.drawerGpText}>{totalGP.toLocaleString()} GP</Text>
+              </View>
+            </View>
+
+            <View style={styles.drawerDivider} />
+
+            {/* Navigation links */}
+            {NAV_ITEMS.map(({ label, screen, Icon }) => (
+              <TouchableOpacity
+                key={screen}
+                style={styles.drawerItem}
+                activeOpacity={0.7}
+                onPress={() => { setMenuVisible(false); navigation.navigate(screen); }}
+              >
+                <Icon size={20} color={COLORS.mint} strokeWidth={2} />
+                <Text style={styles.drawerItemText}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+
+            <View style={styles.drawerDivider} />
+            <Text style={styles.drawerVersion}>WattWise v3.2.1</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Notification Panel Modal ── */}
+      <Modal visible={notifVisible} animationType="slide" transparent onRequestClose={() => setNotifVisible(false)}>
+        <View style={styles.notifOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setNotifVisible(false)} />
+          <View style={styles.notifSheet}>
+            <View style={styles.notifHandle} />
+            <View style={styles.notifHeader}>
+              <Bell size={20} color={COLORS.mint} strokeWidth={2} />
+              <Text style={styles.notifTitle}>Notifications</Text>
+              <TouchableOpacity onPress={() => setNotifVisible(false)} style={{ padding: SPACING.xs }}>
+                <X size={20} color={COLORS.textMuted} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
+              {NOTIFICATIONS.map((notif) => {
+                const NIcon = NOTIF_ICONS[notif.icon] ?? Bell;
+                return (
+                  <View key={notif.id} style={[styles.notifItem, !notif.read && styles.notifItemUnread]}>
+                    <View style={styles.notifIconCircle}>
+                      <NIcon size={16} color={COLORS.mint} strokeWidth={2} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.notifItemHeader}>
+                        <Text style={styles.notifItemTitle}>{notif.title}</Text>
+                        {!notif.read && <View style={styles.notifUnreadDot} />}
+                      </View>
+                      <Text style={styles.notifItemBody}>{notif.body}</Text>
+                      <Text style={styles.notifItemTime}>{notif.time}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -649,4 +725,62 @@ const styles = StyleSheet.create({
   },
   alertTitle: { ...TYPOGRAPHY.captionBold, color: COLORS.warning },
   alertBody: { ...TYPOGRAPHY.caption, color: "#78350F", marginTop: 2, lineHeight: 16 },
+
+  // ── Menu Drawer
+  drawerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
+  drawerPanel: {
+    position: "absolute", left: 0, top: 0, bottom: 0, width: "75%",
+    backgroundColor: COLORS.card, paddingTop: STATUS_BAR_HEIGHT + SPACING.lg,
+    paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xl, ...SHADOWS.lg,
+  },
+  drawerUserSection: { alignItems: "center", gap: SPACING.xs, marginBottom: SPACING.md },
+  drawerAvatar: {
+    width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.mint,
+    alignItems: "center", justifyContent: "center", marginBottom: SPACING.xs,
+  },
+  drawerInitials: { ...TYPOGRAPHY.h2, color: COLORS.textWhite },
+  drawerName: { ...TYPOGRAPHY.h4, color: COLORS.textHeading },
+  drawerEmail: { ...TYPOGRAPHY.caption, color: COLORS.textMuted },
+  drawerGpPill: {
+    flexDirection: "row", alignItems: "center", gap: 5, marginTop: SPACING.xs,
+    backgroundColor: COLORS.mintPale, borderRadius: RADIUS.full,
+    paddingHorizontal: 12, paddingVertical: 5,
+  },
+  drawerGpText: { ...TYPOGRAPHY.captionBold, color: COLORS.mintDark },
+  drawerDivider: { height: 1, backgroundColor: COLORS.borderLight, marginVertical: SPACING.md },
+  drawerItem: {
+    flexDirection: "row", alignItems: "center", gap: SPACING.md,
+    paddingVertical: SPACING.md, paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.md,
+  },
+  drawerItemText: { ...TYPOGRAPHY.bodyMd, color: COLORS.textHeading },
+  drawerVersion: { ...TYPOGRAPHY.caption, color: COLORS.textMuted, textAlign: "center", marginTop: SPACING.sm },
+
+  // ── Notification Panel
+  notifOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
+  notifSheet: {
+    backgroundColor: COLORS.card, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxxl, paddingTop: SPACING.md,
+    gap: SPACING.md, ...SHADOWS.lg,
+  },
+  notifHandle: {
+    alignSelf: "center", width: 40, height: 4, borderRadius: RADIUS.full,
+    backgroundColor: COLORS.border, marginBottom: SPACING.sm,
+  },
+  notifHeader: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  notifTitle: { ...TYPOGRAPHY.h3, color: COLORS.textHeading, flex: 1 },
+  notifItem: {
+    flexDirection: "row", alignItems: "flex-start", gap: SPACING.md,
+    paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight,
+  },
+  notifItemUnread: { backgroundColor: COLORS.mintPale, marginHorizontal: -SPACING.lg, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.md },
+  notifIconCircle: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.mintLight,
+    alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2,
+  },
+  notifItemHeader: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  notifItemTitle: { ...TYPOGRAPHY.bodyMd, color: COLORS.textHeading, fontWeight: "600" },
+  notifUnreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.mint },
+  notifItemBody: { ...TYPOGRAPHY.bodySm, color: COLORS.textBody, lineHeight: 18, marginTop: 2 },
+  notifItemTime: { ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginTop: 4 },
 });

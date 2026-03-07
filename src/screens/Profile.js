@@ -7,6 +7,10 @@ import {
   SafeAreaView,
   StatusBar,
   TouchableOpacity,
+  Switch,
+  Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import {
   Phone,
@@ -19,25 +23,47 @@ import {
   Shield,
   LogOut,
   ChevronRight,
+  ChevronDown,
   Star,
+  X,
 } from 'lucide-react-native';
 import GreenPointsHeader from '../components/GreenPointsHeader';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY, getLevel, getLevelProgress } from '../theme/theme';
-import { useGP } from '../context/GPContext';
-import { BADGE_CATALOGUE } from '../context/GPContext';
+import { useGP, BADGE_CATALOGUE } from '../context/GPContext';
+import { useSettings } from '../services/settingsService';
+import { USER_PROFILE } from '../data/profileData';
+import { FAQ_ITEMS, PRIVACY_POLICY_TEXT } from '../data/legalContent';
 
 // ─── List item ────────────────────────────────────────────────────────────────
-function ListItem({ icon: Icon, iconColor, iconBg, label, desc, danger, onPress, showArrow = true }) {
+function ListItem({ icon: Icon, iconColor, iconBg, label, desc, onPress, showArrow = true, right }) {
   return (
     <TouchableOpacity style={styles.listItem} onPress={onPress} activeOpacity={0.75}>
       <View style={[styles.listIcon, { backgroundColor: iconBg ?? COLORS.mintPale }]}>
         <Icon size={18} color={iconColor ?? COLORS.mint} strokeWidth={2} />
       </View>
       <View style={styles.listText}>
-        <Text style={[styles.listLabel, danger && { color: COLORS.error }]}>{label}</Text>
+        <Text style={styles.listLabel}>{label}</Text>
         {desc ? <Text style={styles.listDesc}>{desc}</Text> : null}
       </View>
-      {showArrow && <ChevronRight size={16} color={COLORS.textMuted} strokeWidth={2} />}
+      {right ?? (showArrow ? <ChevronRight size={16} color={COLORS.textMuted} strokeWidth={2} /> : null)}
+    </TouchableOpacity>
+  );
+}
+
+// ─── FAQ Accordion Item ───────────────────────────────────────────────────────
+function FAQItem({ item, expanded, onToggle }) {
+  return (
+    <TouchableOpacity style={styles.faqItem} onPress={onToggle} activeOpacity={0.75}>
+      <View style={styles.faqHeader}>
+        <Text style={styles.faqQuestion}>{item.q}</Text>
+        <ChevronDown
+          size={16}
+          color={COLORS.textMuted}
+          strokeWidth={2}
+          style={expanded ? { transform: [{ rotate: '180deg' }] } : undefined}
+        />
+      </View>
+      {expanded && <Text style={styles.faqAnswer}>{item.a}</Text>}
     </TouchableOpacity>
   );
 }
@@ -45,8 +71,28 @@ function ListItem({ icon: Icon, iconColor, iconBg, label, desc, danger, onPress,
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ProfileScreen() {
   const { totalGP, streak, completedQuestIds, unlockedBadgeIds } = useGP();
+  const { pushNotifications, biometricLogin, paperlessBilling, toggleSetting } = useSettings();
   const lvl      = getLevel(totalGP);
   const progress = getLevelProgress(totalGP);
+
+  const [faqVisible, setFaqVisible]         = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
+  const [expandedFaq, setExpandedFaq]       = useState(null);
+
+  function handleLogout() {
+    Alert.alert(
+      'Log Out',
+      'Are you sure you want to log out of your WattWise account?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: () => Alert.alert('Logged Out', 'You have been logged out successfully.'),
+        },
+      ],
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -61,11 +107,11 @@ export default function ProfileScreen() {
         {/* Avatar hero */}
         <View style={styles.avatarCard}>
           <View style={styles.avatarCircle}>
-            <Text style={styles.avatarInitials}>AAJ</Text>
+            <Text style={styles.avatarInitials}>{USER_PROFILE.initials}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.userName}>Ahmad A. Johari</Text>
-            <Text style={styles.userEmail}>ahmad.johari@email.com</Text>
+            <Text style={styles.userName}>{USER_PROFILE.name}</Text>
+            <Text style={styles.userEmail}>{USER_PROFILE.email}</Text>
             <View style={styles.tierRow}>
               <Text style={styles.tierEmoji}>{lvl.icon}</Text>
               <Text style={[styles.tierLabel, { color: lvl.color }]}>
@@ -104,7 +150,7 @@ export default function ProfileScreen() {
           <Text style={styles.gpBarHint}>
             {lvl.level < 5
               ? `${(lvl.max - totalGP).toLocaleString()} GP to Level ${lvl.level + 1}`
-              : 'Maximum level reached! 🏆'}
+              : 'Maximum level reached!'}
           </Text>
         </View>
 
@@ -146,11 +192,29 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Details</Text>
           <View style={styles.listCard}>
-            <ListItem icon={Phone}      label="Phone Number"   desc="+65 9123 4567"       iconBg={COLORS.mintPale} />
+            <ListItem
+              icon={Phone}
+              label="Phone Number"
+              desc={USER_PROFILE.phone}
+              iconBg={COLORS.mintPale}
+              onPress={() => Alert.alert('Phone Number', `${USER_PROFILE.phone}\n\nTo update your phone number, please contact SP Group support.`)}
+            />
             <View style={styles.separator} />
-            <ListItem icon={CreditCard} label="Account Number" desc="SP-2024-88451234"    iconBg={COLORS.mintPale} />
+            <ListItem
+              icon={CreditCard}
+              label="Account Number"
+              desc={USER_PROFILE.accountNumber}
+              iconBg={COLORS.mintPale}
+              onPress={() => Alert.alert('Account Number', `${USER_PROFILE.accountNumber}\n\nThis is your unique SP Group account identifier.`)}
+            />
             <View style={styles.separator} />
-            <ListItem icon={Home}       label="Service Address" desc="Blk 123 Toa Payoh Lor 4, #08-45" iconBg={COLORS.mintPale} />
+            <ListItem
+              icon={Home}
+              label="Service Address"
+              desc={USER_PROFILE.serviceAddress}
+              iconBg={COLORS.mintPale}
+              onPress={() => Alert.alert('Service Address', `${USER_PROFILE.serviceAddress}\nSingapore 310123\n\nTo update your service address, please contact SP Group support.`)}
+            />
           </View>
         </View>
 
@@ -158,11 +222,56 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notifications & Security</Text>
           <View style={styles.listCard}>
-            <ListItem icon={Bell}        label="Push Notifications" iconBg={COLORS.orangeLight} iconColor={COLORS.orange} />
+            <ListItem
+              icon={Bell}
+              label="Push Notifications"
+              iconBg={COLORS.orangeLight}
+              iconColor={COLORS.orange}
+              onPress={() => toggleSetting('pushNotifications')}
+              showArrow={false}
+              right={
+                <Switch
+                  value={pushNotifications}
+                  onValueChange={() => toggleSetting('pushNotifications')}
+                  trackColor={{ false: COLORS.borderLight, true: COLORS.mintLight }}
+                  thumbColor={pushNotifications ? COLORS.mint : COLORS.textMuted}
+                />
+              }
+            />
             <View style={styles.separator} />
-            <ListItem icon={Fingerprint} label="Biometric Login"    iconBg={COLORS.blueLight}   iconColor={COLORS.blue} />
+            <ListItem
+              icon={Fingerprint}
+              label="Biometric Login"
+              iconBg={COLORS.blueLight}
+              iconColor={COLORS.blue}
+              onPress={() => toggleSetting('biometricLogin')}
+              showArrow={false}
+              right={
+                <Switch
+                  value={biometricLogin}
+                  onValueChange={() => toggleSetting('biometricLogin')}
+                  trackColor={{ false: COLORS.borderLight, true: COLORS.mintLight }}
+                  thumbColor={biometricLogin ? COLORS.mint : COLORS.textMuted}
+                />
+              }
+            />
             <View style={styles.separator} />
-            <ListItem icon={FileText}    label="Paperless Billing"  iconBg={COLORS.mintLight}   iconColor={COLORS.mint} />
+            <ListItem
+              icon={FileText}
+              label="Paperless Billing"
+              iconBg={COLORS.mintLight}
+              iconColor={COLORS.mint}
+              onPress={() => toggleSetting('paperlessBilling')}
+              showArrow={false}
+              right={
+                <Switch
+                  value={paperlessBilling}
+                  onValueChange={() => toggleSetting('paperlessBilling')}
+                  trackColor={{ false: COLORS.borderLight, true: COLORS.mintLight }}
+                  thumbColor={paperlessBilling ? COLORS.mint : COLORS.textMuted}
+                />
+              }
+            />
           </View>
         </View>
 
@@ -170,22 +279,79 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Help & Legal</Text>
           <View style={styles.listCard}>
-            <ListItem icon={HelpCircle} label="FAQ & Support"    iconBg={COLORS.mintPale} />
+            <ListItem
+              icon={HelpCircle}
+              label="FAQ & Support"
+              iconBg={COLORS.mintPale}
+              onPress={() => setFaqVisible(true)}
+            />
             <View style={styles.separator} />
-            <ListItem icon={Shield}     label="Privacy Policy"   iconBg={COLORS.mintPale} />
+            <ListItem
+              icon={Shield}
+              label="Privacy Policy"
+              iconBg={COLORS.mintPale}
+              onPress={() => setPrivacyVisible(true)}
+            />
             <View style={styles.separator} />
-            <ListItem icon={FileText}   label="Terms of Service" iconBg={COLORS.mintPale} showArrow={false} desc="v3.2.1" />
+            <ListItem icon={FileText} label="Terms of Service" iconBg={COLORS.mintPale} showArrow={false} desc="v3.2.1" />
           </View>
         </View>
 
         {/* Logout */}
         <View style={[styles.section, { marginBottom: SPACING.sm }]}>
-          <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.8} onPress={handleLogout}>
             <LogOut size={18} color={COLORS.error} strokeWidth={2} />
             <Text style={styles.logoutText}>Log Out</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* ── FAQ Modal ── */}
+      <Modal visible={faqVisible} animationType="slide" transparent onRequestClose={() => setFaqVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setFaqVisible(false)} />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <HelpCircle size={20} color={COLORS.mint} strokeWidth={2} />
+              <Text style={styles.modalTitle}>FAQ & Support</Text>
+              <TouchableOpacity onPress={() => setFaqVisible(false)} style={{ padding: SPACING.xs }}>
+                <X size={20} color={COLORS.textMuted} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              {FAQ_ITEMS.map((item) => (
+                <FAQItem
+                  key={item.id}
+                  item={item}
+                  expanded={expandedFaq === item.id}
+                  onToggle={() => setExpandedFaq((prev) => (prev === item.id ? null : item.id))}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Privacy Policy Modal ── */}
+      <Modal visible={privacyVisible} animationType="slide" transparent onRequestClose={() => setPrivacyVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setPrivacyVisible(false)} />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <Shield size={20} color={COLORS.mint} strokeWidth={2} />
+              <Text style={styles.modalTitle}>Privacy Policy</Text>
+              <TouchableOpacity onPress={() => setPrivacyVisible(false)} style={{ padding: SPACING.xs }}>
+                <X size={20} color={COLORS.textMuted} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              <Text style={styles.policyText}>{PRIVACY_POLICY_TEXT}</Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -285,4 +451,41 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.errorLight,
   },
   logoutText: { ...TYPOGRAPHY.h4, color: COLORS.error },
+
+  // Modal
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalSheet: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xxxl,
+    paddingTop: SPACING.md,
+    gap: SPACING.md,
+    ...SHADOWS.lg,
+  },
+  modalHandle: {
+    alignSelf: 'center',
+    width: 40, height: 4,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.border,
+    marginBottom: SPACING.sm,
+  },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+  },
+  modalTitle: { ...TYPOGRAPHY.h3, color: COLORS.textHeading, flex: 1 },
+
+  // FAQ
+  faqItem: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+    paddingVertical: SPACING.md,
+  },
+  faqHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  faqQuestion: { ...TYPOGRAPHY.bodyMd, color: COLORS.textHeading, flex: 1, fontWeight: '600' },
+  faqAnswer: { ...TYPOGRAPHY.bodySm, color: COLORS.textBody, lineHeight: 20, marginTop: SPACING.sm },
+
+  // Privacy policy
+  policyText: { ...TYPOGRAPHY.bodySm, color: COLORS.textBody, lineHeight: 22 },
 });

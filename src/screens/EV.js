@@ -7,6 +7,9 @@ import {
   SafeAreaView,
   StatusBar,
   TouchableOpacity,
+  Linking,
+  Alert,
+  Platform,
 } from "react-native";
 import {
   MapPin,
@@ -28,6 +31,7 @@ const STATIONS = [
     id: "ev1",
     name: "Toa Payoh Hub",
     address: "480 Lorong 6 Toa Payoh, S310480",
+    lat: 1.3326, lng: 103.8500,
     distance: "0.8 km",
     available: 4,
     total: 6,
@@ -40,6 +44,7 @@ const STATIONS = [
     id: "ev2",
     name: "Jurong West St 42",
     address: "Blk 498 Jurong West St 42, S640498",
+    lat: 1.3501, lng: 103.7189,
     distance: "2.3 km",
     available: 2,
     total: 6,
@@ -52,6 +57,7 @@ const STATIONS = [
     id: "ev3",
     name: "Bishan North CC",
     address: "51 Bishan St 13, S579799",
+    lat: 1.3578, lng: 103.8480,
     distance: "3.1 km",
     available: 6,
     total: 6,
@@ -64,6 +70,7 @@ const STATIONS = [
     id: "ev4",
     name: "Clementi MRT Station",
     address: "3155 Commonwealth Ave W, S129588",
+    lat: 1.3151, lng: 103.7652,
     distance: "4.4 km",
     available: 0,
     total: 4,
@@ -77,7 +84,7 @@ const STATIONS = [
 const FILTERS = ["All", "Available", "DC Fast", "AC"];
 
 // ─── Station card ─────────────────────────────────────────────────────────────
-function StationCard({ station }) {
+function StationCard({ station, onNavigate }) {
   const isAvailable = station.available > 0;
   const isFull = station.available === station.total;
   const dotColor = !isAvailable
@@ -156,7 +163,7 @@ function StationCard({ station }) {
       </View>
 
       {/* Navigate button */}
-      <TouchableOpacity style={styles.navigateBtn} activeOpacity={0.8}>
+      <TouchableOpacity style={styles.navigateBtn} activeOpacity={0.8} onPress={() => onNavigate(station)}>
         <Navigation size={14} color={COLORS.textWhite} strokeWidth={2.5} />
         <Text style={styles.navigateBtnText}>Navigate</Text>
         <ChevronRight size={14} color={COLORS.textWhite} strokeWidth={2.5} />
@@ -168,6 +175,19 @@ function StationCard({ station }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function EVScreen() {
   const [activeFilter, setActiveFilter] = useState("All");
+
+  function handleNavigate(station) {
+    const { lat, lng, name } = station;
+    const encodedName = encodeURIComponent(name);
+    const url = Platform.select({
+      ios: `maps:0,0?q=${encodedName}&ll=${lat},${lng}`,
+      android: `geo:${lat},${lng}?q=${lat},${lng}(${encodedName})`,
+      default: `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
+    });
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Unable to Open Maps", "Please install a maps application.");
+    });
+  }
 
   const filtered = STATIONS.filter((s) => {
     if (activeFilter === "All") return true;
@@ -260,7 +280,7 @@ export default function EVScreen() {
             {filtered.length} Station{filtered.length !== 1 ? "s" : ""} Found
           </Text>
           {filtered.map((s) => (
-            <StationCard key={s.id} station={s} />
+            <StationCard key={s.id} station={s} onNavigate={handleNavigate} />
           ))}
         </View>
       </ScrollView>
