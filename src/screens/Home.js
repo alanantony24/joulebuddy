@@ -235,8 +235,10 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => {
     let cancelled = false;
-    console.log("[Home] Fetching energy data from ML API...");
-    (async () => {
+    console.log("[Home] Fetching energy data + AI insight in parallel...");
+
+    // Fetch energy data and AI insight in parallel
+    const energyPromise = (async () => {
       const apiData = await fetchEnergyFromAPI();
       if (apiData && !cancelled) {
         console.log("[Home] ✓ Using ML model data");
@@ -248,13 +250,17 @@ export default function HomeScreen({ navigation }) {
       } else {
         console.log("[Home] Using local fallback data");
       }
-      // Fetch AI-powered insight (runs in parallel with Gemini)
-      const ai = await fetchAIInsight(period);
+    })();
+
+    const aiPromise = (async () => {
+      const ai = await fetchAIInsight("monthly");
       if (ai && !cancelled) {
         console.log("[Home] ✓ AI insight loaded (source:", ai.source, ")");
         setAiInsight(ai);
       }
     })();
+
+    Promise.all([energyPromise, aiPromise]);
     return () => { cancelled = true; };
   }, []);
 

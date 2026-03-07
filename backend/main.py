@@ -382,6 +382,12 @@ SYSTEM_PROMPT = (
 )
 
 import json as _json
+import time as _time
+
+# Cache AI insight for 10 minutes to avoid Gemini rate limits
+_ai_cache = {}        # key = period, value = response dict
+_ai_cache_ts = {}     # key = period, value = timestamp
+AI_CACHE_TTL = 600    # 10 minutes
 
 @app.get("/api/ai-insight")
 def get_ai_insight(period: str = "monthly"):
@@ -389,7 +395,12 @@ def get_ai_insight(period: str = "monthly"):
     Uses Gemini to generate personalized JouleBuddy insight, recommended action,
     and notification content based on the user's real energy data.
     Returns structured JSON with insight text, action, and notifications.
+    Caches results for 10 minutes to avoid hitting Gemini rate limits.
     """
+    # Return cached response if still fresh
+    now = _time.time()
+    if period in _ai_cache and (now - _ai_cache_ts.get(period, 0)) < AI_CACHE_TTL:
+        return _ai_cache[period]
     energy_context = get_energy_context()
 
     prompt = f"""{SYSTEM_PROMPT}
@@ -443,7 +454,10 @@ Icon values must be one of: zap, check, lightbulb, thermometer, clock, trending-
                 text = text.split("\n", 1)[1]
                 text = text.rsplit("```", 1)[0]
             data = _json.loads(text)
-            return {"source": "gemini", **data}
+            result = {"source": "gemini", **data}
+            _ai_cache[period] = result
+            _ai_cache_ts[period] = _time.time()
+            return result
         except Exception as e:
             print(f"⚠ Gemini AI insight failed ({e}), using fallback")
 
