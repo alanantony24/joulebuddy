@@ -6,10 +6,8 @@
 // (so the app always works, even without the server).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// *** Change this to your computer's local IP when running the backend ***
-// Use `ipconfig` (Windows) or `ifconfig` (Mac/Linux) to find it.
-// Expo Go on a phone cannot reach "localhost" — it needs the LAN IP.
-const API_BASE = "http://172.29.17.111:8000";
+// *** Backend URL – deployed on Render ***
+const API_BASE = "https://joulebuddy-backend.onrender.com";
 
 const CHART_COLORS = ["#FF6B6B", "#FFB84D", "#4ECDC4", "#A78BFA"];
 
@@ -74,6 +72,18 @@ export async function fetchQuickStatsFromAPI() {
     return await res.json();
   } catch (err) {
     console.warn("[EnergyService] Quick stats fetch failed:", err.message);
+    return null;
+  }
+}
+
+export async function fetchAIInsight(period = "monthly") {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/api/ai-insight?period=${period}`, 15000);
+    const data = await res.json();
+    console.log("[EnergyService] ✓ AI insight received (source:", data.source, ")");
+    return data;
+  } catch (err) {
+    console.warn("[EnergyService] AI insight fetch failed:", err.message);
     return null;
   }
 }

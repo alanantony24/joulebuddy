@@ -54,7 +54,7 @@ import {
   TYPOGRAPHY,
 } from "../theme/theme";
 import { useGP } from "../context/GPContext";
-import { generateEnergyData, computeQuickStats, fetchEnergyFromAPI, fetchQuickStatsFromAPI } from "../services/energyDataService";
+import { generateEnergyData, computeQuickStats, fetchEnergyFromAPI, fetchQuickStatsFromAPI, fetchAIInsight } from "../services/energyDataService";
 import { generateSmartNotifications } from "../services/notificationData";
 import { USER_PROFILE } from "../data/profileData";
 
@@ -231,6 +231,7 @@ export default function HomeScreen({ navigation }) {
   const [quickStatsData, setQuickStatsData] = useState(() =>
     computeQuickStats(generateEnergyData().monthly.data),
   );
+  const [aiInsight, setAiInsight] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -246,6 +247,12 @@ export default function HomeScreen({ navigation }) {
         else if (!cancelled) setQuickStatsData(computeQuickStats(apiData.monthly.data));
       } else {
         console.log("[Home] Using local fallback data");
+      }
+      // Fetch AI-powered insight (runs in parallel with Gemini)
+      const ai = await fetchAIInsight(period);
+      if (ai && !cancelled) {
+        console.log("[Home] ✓ AI insight loaded (source:", ai.source, ")");
+        setAiInsight(ai);
       }
     })();
     return () => { cancelled = true; };
@@ -279,11 +286,19 @@ export default function HomeScreen({ navigation }) {
   const treesEquiv = useMemo(() => Math.round(nationalTonnes * 1000 / 21.77), [nationalTonnes]); // ~21.77 kg per tree/year
   const greenPlan2030Pct = 38; // Singapore Green Plan progress placeholder
 
-  // ── Smart notifications from daily energy data ──
-  const notifications = useMemo(
-    () => generateSmartNotifications(energyData.daily?.data ?? []),
-    [energyData],
-  );
+  // ── Smart notifications from daily energy data (AI-enhanced) ──
+  const notifications = useMemo(() => {
+    // If AI insight has notifications, use those
+    if (aiInsight?.notifications?.length) {
+      return aiInsight.notifications.map((n, i) => ({
+        id: `ai-${i}`,
+        ...n,
+        time: i === 0 ? "Just now" : i === 1 ? "1h ago" : "3h ago",
+        read: false,
+      }));
+    }
+    return generateSmartNotifications(energyData.daily?.data ?? []);
+  }, [energyData, aiInsight]);
   const hasUnread = notifications.some((n) => !n.read);
 
   async function handleGreenUpVerify() {
@@ -430,10 +445,12 @@ export default function HomeScreen({ navigation }) {
 
             <View style={styles.insightBlock}>
               <Text style={styles.insightText}>
-                <Text style={styles.insightBold}>{current.insight.text1(dominant)}</Text>
+                <Text style={styles.insightBold}>
+                  {aiInsight?.insight?.text1 ?? current.insight.text1(dominant)}
+                </Text>
               </Text>
               <Text style={[styles.insightText, { marginTop: 8 }]}>
-                {current.insight.text2}
+                {aiInsight?.insight?.text2 ?? current.insight.text2}
               </Text>
             </View>
 
@@ -446,6 +463,13 @@ export default function HomeScreen({ navigation }) {
                 </Text>
               </Text>
             </View>
+
+            {aiInsight?.source === "gemini" && (
+              <View style={styles.aiPoweredRow}>
+                <Sparkles size={10} color="rgba(74,222,128,0.6)" strokeWidth={2} />
+                <Text style={styles.aiPoweredText}>Powered by Gemini AI</Text>
+              </View>
+            )}
           </LinearGradient>
         </FadeInView>
 
@@ -457,21 +481,31 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.recoIconCircle}>
               <Thermometer size={20} color={COLORS.mint} strokeWidth={2} />
             </View>
-            <Text style={styles.recoTitle}>Recommended Action</Text>
+            <Text style={styles.recoTitle}>
+              {aiInsight?.action?.title ?? "Recommended Action"}
+            </Text>
             <Text style={styles.recoBody}>
-              Set your air conditioner to{" "}
-              <Text style={{ fontWeight: "700", color: COLORS.textHeading }}>25 °C</Text>
-              {" "}and switch to{" "}
-              <Text style={{ fontWeight: "700", color: COLORS.textHeading }}>Eco Mode</Text>.
+              {aiInsight?.action?.body ?? (
+                <>
+                  Set your air conditioner to{" "}
+                  <Text style={{ fontWeight: "700", color: COLORS.textHeading }}>25 °C</Text>
+                  {" "}and switch to{" "}
+                  <Text style={{ fontWeight: "700", color: COLORS.textHeading }}>Eco Mode</Text>.
+                </>
+              )}
             </Text>
             <View style={styles.recoMetrics}>
               <View style={styles.recoMetricPill}>
                 <TrendingDown size={12} color={COLORS.mint} strokeWidth={2.5} />
-                <Text style={styles.recoMetricText}>-12% cooling</Text>
+                <Text style={styles.recoMetricText}>
+                  {aiInsight?.action?.metric1 ?? "-12% cooling"}
+                </Text>
               </View>
               <View style={styles.recoMetricPill}>
                 <DollarSign size={12} color="#14b8a6" strokeWidth={2.5} />
-                <Text style={styles.recoMetricText}>~$4/mo saved</Text>
+                <Text style={styles.recoMetricText}>
+                  {aiInsight?.action?.metric2 ?? "~$4/mo saved"}
+                </Text>
               </View>
             </View>
           </View>
@@ -876,6 +910,13 @@ const styles = StyleSheet.create({
   insightBold: { fontWeight: "700", color: COLORS.textWhite },
   savingsRow: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
   savingsText: { ...TYPOGRAPHY.bodySm, color: "#94a3b8" },
+  aiPoweredRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: SPACING.sm,
+  },
+  aiPoweredText: { ...TYPOGRAPHY.micro, color: "rgba(74,222,128,0.6)", fontSize: 9 },
 
   // ── Recommended Action card
   recoCard: {

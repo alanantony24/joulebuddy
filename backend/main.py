@@ -2,12 +2,13 @@
 # WattWise ML Backend
 #
 # Serves appliance-classification predictions to the React Native app.
-# Uses the trained ML model exported from the Jupyter notebook.
+# Reads REAL energy data from ClickHouse Cloud, runs the trained ML model
+# for appliance classification, and returns the breakdown.
 #
 # Usage:
 #   1. pip install -r requirements.txt
-#   2. Copy your .joblib model file into this folder
-#   3. Update APPLIANCE_MAP and FEATURE_COLUMNS below to match YOUR model
+#   2. Fill in backend/.env with your ClickHouse credentials
+#   3. Copy your .joblib model file into this folder
 #   4. python main.py
 #   5. Test: http://localhost:8000/api/energy?period=monthly
 # ─────────────────────────────────────────────────────────────────────────────
@@ -30,9 +31,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Environment / Config ────────────────────────────────────────────────────
+
+# Load .env file if python-dotenv is available
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+except ImportError:
+    pass
+
+CLICKHOUSE_HOST = os.environ.get("CLICKHOUSE_HOST", "")
+CLICKHOUSE_PORT = int(os.environ.get("CLICKHOUSE_PORT", "8443"))
+CLICKHOUSE_USER = os.environ.get("CLICKHOUSE_USER", "default")
+CLICKHOUSE_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "")
+
+# ── ClickHouse Client ───────────────────────────────────────────────────────
+
+CH_CLIENT = None
+
+try:
+    import clickhouse_connect
+    CH_CLIENT = clickhouse_connect.get_client(
+        host=CLICKHOUSE_HOST,
+        port=CLICKHOUSE_PORT,
+        username=CLICKHOUSE_USER,
+        password=CLICKHOUSE_PASSWORD,
+        secure=True,
+        connect_timeout=15,
+        send_receive_timeout=30,
+    )
+    row_count = CH_CLIENT.command("SELECT count() FROM energy_consumption_table")
+    print(f"✓ Connected to ClickHouse Cloud ({row_count:,} rows in energy_consumption_table)")
+except Exception as e:
+    print(f"⚠ ClickHouse connection failed ({e}). Will use synthetic fallback.")
+    CH_CLIENT = None
+
 # ── Model Loading ────────────────────────────────────────────────────────────
-# Try to load the real model; fall back to a mock if not found.
-# This means the backend ALWAYS works, even without the .joblib file.
 
 MODEL = None
 MODEL_ACCURACY = 69  # your reported accuracy
@@ -49,10 +83,7 @@ except Exception as e:
 
 
 # ── Configuration ────────────────────────────────────────────────────────────
-# *** CHANGE THESE to match your actual model ***
 
-# Map your model's numeric output labels → appliance names
-# Look at your notebook to see what labels the model outputs
 APPLIANCE_MAP = {
     0: "Cooling",
     1: "Laundry",
@@ -60,16 +91,13 @@ APPLIANCE_MAP = {
     3: "Baseload",
 }
 
-# The feature columns your model expects (in the correct order)
-# Look at what you pass to model.fit() / model.predict() in your notebook
-# The exact columns your model was trained on in the Jupyter notebook
 FEATURE_COLUMNS = [
-    "Global_active_power", 
-    "hour", 
-    "day_of_week", 
-    "month", 
-    "day_of_year", 
-    "power_diff_1"
+    "Global_active_power",
+    "hour",
+    "day_of_week",
+    "month",
+    "day_of_year",
+    "power_diff_1",
 ]
 
 CHART_COLORS = {
@@ -80,99 +108,141 @@ CHART_COLORS = {
 }
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Data Fetching ────────────────────────────────────────────────────────────
+
+def fetch_from_clickhouse(num_hours: int) -> pd.DataFrame:
+    """
+    Query real energy data from ClickHouse Cloud.
+    Returns a DataFrame with the columns needed for ML prediction.
+    """
+    # Get a representative sample of rows from the dataset.
+    # We use LIMIT + ORDER BY to get a contiguous time window.
+    query = f"""
+    SELECT
+        Global_active_power,
+        Global_reactive_power,
+        Voltage,
+        Global_intensity,
+        Sub_metering_1,
+        Sub_metering_2,
+        Sub_metering_3,
+        toUInt8(substring(toString(Time), 1, 2)) AS hour,
+        toDayOfWeek(toDate(Date)) AS day_of_week,
+        toMonth(toDate(Date)) AS month,
+        toDayOfYear(toDate(Date)) AS day_of_year
+    FROM energy_consumption_table
+    WHERE Global_active_power > 0
+    ORDER BY Date DESC, Time DESC
+    LIMIT {num_hours}
+    """
+    result = CH_CLIENT.query(query)
+    columns = list(result.column_names) if hasattr(result, 'column_names') else [
+        "Global_active_power", "Global_reactive_power", "Voltage",
+        "Global_intensity", "Sub_metering_1", "Sub_metering_2", "Sub_metering_3",
+        "hour", "day_of_week", "month", "day_of_year",
+    ]
+
+    df = pd.DataFrame(result.result_rows, columns=columns)
+
+    # Compute power_diff_1 (difference from previous reading)
+    df["power_diff_1"] = df["Global_active_power"].diff().fillna(0)
+
+    # Add legacy columns used by build_breakdown
+    df["hour_of_day"] = df["hour"]
+    df["power_kw"] = df["Global_active_power"]
+
+    return df
+
 
 def generate_readings(num_hours: int) -> pd.DataFrame:
     """
-    Generate synthetic meter readings to feed into the model.
-    Includes the specific feature columns the .joblib model expects.
+    Synthetic fallback when ClickHouse is unavailable.
     """
     now = datetime.now()
     rows = []
-    prev_power = 0.4  # Starting point for power_diff_1
+    prev_power = 0.4
 
     for i in range(num_hours):
         ts = now - timedelta(hours=num_hours - i)
-        
-        # Time features expected by the model
         hour = ts.hour
         dow = ts.weekday()
         month = ts.month
         doy = ts.timetuple().tm_yday
-        
-        # Simulate realistic power draw — higher during waking hours
+
         base = 0.4
         if 7 <= hour <= 9 or 18 <= hour <= 23:
-            base = 1.5  # morning rush + evening
+            base = 1.5
         if 12 <= hour <= 14:
-            base = 1.0  # midday cooking
-            
+            base = 1.0
+
         power = max(0.1, base + random.gauss(0, 0.5))
-        
-        # Calculate the difference from the previous hour (power_diff_1)
         power_diff = power - prev_power
         prev_power = power
 
         rows.append({
-            # --- Features for the ML Model ---
             "Global_active_power": round(power, 3),
             "hour": hour,
             "day_of_week": dow,
             "month": month,
             "day_of_year": doy,
             "power_diff_1": round(power_diff, 3),
-            
-            # --- Legacy features for the backend's internal math ---
             "hour_of_day": hour,
             "power_kw": round(power, 3),
         })
-        
+
     return pd.DataFrame(rows)
 
 
+def get_readings(num_hours: int) -> tuple[pd.DataFrame, str]:
+    """
+    Try ClickHouse first, fall back to synthetic data.
+    Returns (dataframe, source_label).
+    """
+    if CH_CLIENT is not None:
+        try:
+            df = fetch_from_clickhouse(num_hours)
+            if len(df) > 0:
+                return df, "clickhouse"
+        except Exception as e:
+            print(f"⚠ ClickHouse query failed: {e}")
+    return generate_readings(num_hours), "synthetic"
+
+
+# ── Prediction helpers ───────────────────────────────────────────────────────
+
 def rule_based_predict(df: pd.DataFrame) -> list:
-    """
-    Simple rule-based fallback when the real ML model is not loaded.
-    Mimics the kind of time-based classification your model does.
-    """
+    """Fallback when the ML model is not loaded."""
     preds = []
     for _, row in df.iterrows():
         h = row["hour_of_day"]
         p = row["power_kw"]
         if p > 2.0 and 18 <= h <= 23:
-            preds.append(0)  # Cooling (evening AC)
+            preds.append(0)
         elif 7 <= h <= 10 or 18 <= h <= 20:
-            preds.append(1)  # Laundry (morning/evening)
+            preds.append(1)
         elif 11 <= h <= 14 or 17 <= h <= 19:
-            preds.append(2)  # Kitchen (meal times)
+            preds.append(2)
         else:
-            preds.append(3)  # Baseload (fridge, standby)
+            preds.append(3)
     return preds
 
 
-def build_breakdown(df: pd.DataFrame, predictions: list) -> list:
+def build_breakdown(df: pd.DataFrame, predictions: list) -> tuple:
     """Convert predictions into the JSON shape the app expects."""
     df = df.copy()
-    
-    # FIX 1: Safety net in case your model predicts strings instead of ints
+
     df["appliance"] = [
-        p if isinstance(p, str) else APPLIANCE_MAP.get(p, "Other") 
+        p if isinstance(p, str) else APPLIANCE_MAP.get(p, "Other")
         for p in predictions
     ]
 
-    # power_kw for 1 hour ≈ kWh
     grouped = df.groupby("appliance")["power_kw"].sum()
-    
-    # FIX 2: Explicitly cast the Pandas sum (np.float64) to a native Python float
     total = float(grouped.sum())
 
     data = []
     for appliance in ["Cooling", "Laundry", "Kitchen", "Baseload"]:
         kwh = float(grouped.get(appliance, 0))
-        
-        # FIX 3: Explicitly cast the percentage to a native Python int
         pct = int(round((kwh / total) * 100)) if total > 0 else 0
-        
         data.append({
             "name": appliance,
             "value": round(kwh, 1),
@@ -180,7 +250,6 @@ def build_breakdown(df: pd.DataFrame, predictions: list) -> list:
             "color": CHART_COLORS.get(appliance, "#94a3b8"),
         })
 
-    # Sort descending by percentage
     data.sort(key=lambda x: x["pct"], reverse=True)
     return data, round(total, 1)
 
@@ -191,7 +260,7 @@ def build_breakdown(df: pd.DataFrame, predictions: list) -> list:
 def get_energy_breakdown(period: str = "monthly"):
     """
     Returns appliance energy breakdown for the requested period.
-    Runs the ML model on synthetic readings.
+    Queries real data from ClickHouse and runs the ML model.
     """
     period_config = {
         "daily":   {"hours": 24,      "label": "Today"},
@@ -209,24 +278,19 @@ def get_energy_breakdown(period: str = "monthly"):
     else:
         badge = now.strftime("%b %Y")
 
-    # Generate synthetic readings
-    df = generate_readings(cfg["hours"])
+    # Fetch real data from ClickHouse (falls back to synthetic)
+    df, source = get_readings(cfg["hours"])
 
     # Run predictions
-    # Run predictions
     if MODEL is not None:
-        # FIX: Ask the model exactly what columns it wants and in what order
         expected_columns = list(MODEL.feature_names_in_)
-        
-        # Slicing the dataframe with this list automatically reorders the columns perfectly!
-        features = df[expected_columns] 
-        
+        features = df[expected_columns]
         predictions = MODEL.predict(features).tolist()
     else:
         predictions = rule_based_predict(df)
 
     data, total_kwh = build_breakdown(df, predictions)
-    dominant = data[0]  # already sorted descending
+    dominant = data[0]
     peak = f"{random.choice([6, 7, 8])} PM – {random.choice([9, 10, 11])} PM"
 
     return {
@@ -243,6 +307,7 @@ def get_energy_breakdown(period: str = "monthly"):
         "totalKwh": total_kwh,
         "modelAccuracy": MODEL_ACCURACY,
         "modelLoaded": MODEL is not None,
+        "dataSource": source,
     }
 
 
@@ -270,6 +335,151 @@ def health_check():
         "status": "ok",
         "model_loaded": MODEL is not None,
         "model_accuracy": MODEL_ACCURACY,
+        "clickhouse_connected": CH_CLIENT is not None,
+    }
+
+
+# ── Gemini AI Chat ───────────────────────────────────────────────────────
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+GEMINI_CLIENT = None
+try:
+    import google.generativeai as genai
+    if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        GEMINI_CLIENT = genai.GenerativeModel("gemini-2.0-flash")
+        print("✓ Gemini AI configured")
+    else:
+        print("⚠ No GEMINI_API_KEY set. Chat will use fallback responses.")
+except ImportError:
+    print("⚠ google-generativeai not installed. Chat will use fallback responses.")
+
+def get_energy_context() -> str:
+    """Build a summary of the user's energy data for the AI system prompt."""
+    try:
+        energy = get_energy_breakdown("monthly")
+        breakdown = ", ".join(
+            f"{d['name']}: {d['pct']}% ({d['value']} kWh)" for d in energy["data"]
+        )
+        return (
+            f"User's monthly energy: {energy['totalKwh']} kWh total. "
+            f"Breakdown — {breakdown}. "
+            f"Dominant category: {energy['insight']['dominant']} "
+            f"({energy['insight']['dominantPct']}%). "
+            f"Peak usage: {energy['insight']['peak']}. "
+            f"Data source: {energy['dataSource']}."
+        )
+    except Exception:
+        return "Energy data unavailable."
+
+SYSTEM_PROMPT = (
+    "You are JouleBuddy, a friendly and knowledgeable energy-saving AI assistant "
+    "for the WattWise app in Singapore. You help users understand their electricity "
+    "usage, suggest ways to save energy and money, and answer questions about "
+    "sustainable living. Keep responses concise and practical. "
+    "Use the user's real energy data when available to give personalized advice."
+)
+
+import json as _json
+
+@app.get("/api/ai-insight")
+def get_ai_insight(period: str = "monthly"):
+    """
+    Uses Gemini to generate personalized JouleBuddy insight, recommended action,
+    and notification content based on the user's real energy data.
+    Returns structured JSON with insight text, action, and notifications.
+    """
+    energy_context = get_energy_context()
+
+    prompt = f"""{SYSTEM_PROMPT}
+
+Current energy data: {energy_context}
+
+Based on this data, generate a JSON response with EXACTLY this structure (no markdown, just raw JSON):
+{{
+  "insight": {{
+    "text1": "One sentence about the user's dominant energy category and its percentage.",
+    "text2": "One sentence with a specific, actionable observation about their usage pattern."
+  }},
+  "action": {{
+    "title": "Short action title (3-5 words)",
+    "body": "One specific, practical recommendation sentence.",
+    "metric1": "e.g. -12% cooling",
+    "metric2": "e.g. ~$4/mo saved"
+  }},
+  "notifications": [
+    {{
+      "type": "nudge",
+      "title": "Short alert title",
+      "body": "One sentence nudge about usage pattern.",
+      "icon": "zap"
+    }},
+    {{
+      "type": "congrats",
+      "title": "Short praise title",
+      "body": "One sentence congratulating a good habit.",
+      "icon": "check"
+    }},
+    {{
+      "type": "tip",
+      "title": "Short tip title",
+      "body": "One sentence energy-saving tip relevant to their data.",
+      "icon": "lightbulb"
+    }}
+  ]
+}}
+
+Period context: {period}. Tailor the insight to this time period.
+Make every response unique and specific to the data. Avoid generic advice.
+Icon values must be one of: zap, check, lightbulb, thermometer, clock, trending-up, trending-down."""
+
+    if GEMINI_CLIENT is not None:
+        try:
+            response = GEMINI_CLIENT.generate_content(prompt)
+            text = response.text.strip()
+            # Strip markdown code fences if present
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1]
+                text = text.rsplit("```", 1)[0]
+            data = _json.loads(text)
+            return {"source": "gemini", **data}
+        except Exception as e:
+            print(f"⚠ Gemini AI insight failed ({e}), using fallback")
+
+    # Fallback
+    return {
+        "source": "fallback",
+        "insight": {
+            "text1": "Cooling accounts for the highest electricity usage this period.",
+            "text2": "Most usage occurs during evening hours when AC runs continuously.",
+        },
+        "action": {
+            "title": "Optimise AC Usage",
+            "body": "Set your air conditioner to 25°C and switch to Eco Mode.",
+            "metric1": "-12% cooling",
+            "metric2": "~$4/mo saved",
+        },
+        "notifications": [
+            {
+                "type": "nudge",
+                "title": "Usage trending up",
+                "body": "Your energy usage is higher than your 10-day average.",
+                "icon": "trending-up",
+            },
+            {
+                "type": "congrats",
+                "title": "Great energy day",
+                "body": "Your usage today is below the daily average. Keep it up!",
+                "icon": "check",
+            },
+            {
+                "type": "tip",
+                "title": "Evening tip",
+                "body": "Try setting your AC to 25°C during peak hours to save energy.",
+                "icon": "thermometer",
+            },
+        ],
     }
 
 
@@ -277,6 +487,8 @@ def health_check():
 if __name__ == "__main__":
     import uvicorn
     print("\n🔋 WattWise ML Backend starting...")
+    print(f"   ClickHouse: {'connected' if CH_CLIENT else 'not connected'}")
+    print(f"   ML Model:   {'loaded' if MODEL else 'fallback'}")
     print("   Docs:   http://localhost:8000/docs")
     print("   Test:   http://localhost:8000/api/energy?period=monthly")
     print("   Health: http://localhost:8000/api/health\n")
