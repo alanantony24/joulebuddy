@@ -1,12 +1,84 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Energy Data Service
 //
-// Generates realistic Singapore household energy consumption data
-// simulating aggregation from a 100K-row dataset.
-// A typical 4-room HDB flat uses ~350–450 kWh/month.
+// Fetches appliance-breakdown data from the ML backend.
+// Falls back to local random generation when the API is unreachable
+// (so the app always works, even without the server).
 // ─────────────────────────────────────────────────────────────────────────────
 
+// *** Change this to your computer's local IP when running the backend ***
+// Use `ipconfig` (Windows) or `ifconfig` (Mac/Linux) to find it.
+// Expo Go on a phone cannot reach "localhost" — it needs the LAN IP.
+const API_BASE = "http://172.29.17.111:8000";
+
 const CHART_COLORS = ["#FF6B6B", "#FFB84D", "#4ECDC4", "#A78BFA"];
+
+// ── API-based fetching ──────────────────────────────────────────────────────
+
+function fetchWithTimeout(url, timeoutMs = 5000) {
+  return Promise.race([
+    fetch(url),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs),
+    ),
+  ]);
+}
+
+export async function fetchEnergyFromAPI() {
+  console.log("[EnergyService] Attempting to fetch from:", API_BASE);
+  try {
+    const [daily, weekly, monthly] = await Promise.all([
+      fetchWithTimeout(`${API_BASE}/api/energy?period=daily`).then((r) => r.json()),
+      fetchWithTimeout(`${API_BASE}/api/energy?period=weekly`).then((r) => r.json()),
+      fetchWithTimeout(`${API_BASE}/api/energy?period=monthly`).then((r) => r.json()),
+    ]);
+    console.log("[EnergyService] ✓ API data received successfully");
+
+    // The API returns data in the same shape the app expects,
+    // but insight.text1 needs to be a function (the API sends raw strings).
+    // We wrap them here so Home.js doesn't need to change.
+    const wrapInsight = (apiData, periodLabel) => {
+      const dom = apiData.data.reduce(
+        (a, b) => (b.pct > a.pct ? b : a),
+        apiData.data[0],
+      );
+      return {
+        ...apiData,
+        subtitle: `${apiData.label} by category`,
+        insight: {
+          text1: (_dom) =>
+            `${dom.name} accounted for ${dom.pct}% of your electricity ${periodLabel} — the largest category. (ML model, ${apiData.modelAccuracy}% accuracy)`,
+          text2: `Peak usage detected around ${apiData.insight.peak}. This prediction is based on our ML model trained on 100K household readings.`,
+          peak: apiData.insight.peak,
+          savings: `${apiData.insight.savings}/${periodLabel === "today" ? "day" : periodLabel === "this week" ? "week" : "month"}`,
+        },
+      };
+    };
+
+    return {
+      daily: wrapInsight(daily, "today"),
+      weekly: wrapInsight(weekly, "this week"),
+      monthly: wrapInsight(monthly, "this month"),
+      source: "ml-model",
+    };
+  } catch (err) {
+    console.warn("[EnergyService] ✗ API call failed:", err.message);
+    console.warn("[EnergyService] Make sure API_BASE IP is your Wi-Fi IP (not VirtualBox). Current:", API_BASE);
+    return null;
+  }
+}
+
+export async function fetchQuickStatsFromAPI() {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/api/quick-stats`);
+    return await res.json();
+  } catch (err) {
+    console.warn("[EnergyService] Quick stats fetch failed:", err.message);
+    return null;
+  }
+}
+
+// ── Local fallback (original random generation) ─────────────────────────────
 
 const CATEGORIES = [
   { name: "Cooling", minPct: 40, maxPct: 48 },
@@ -24,7 +96,6 @@ function round1(v) {
 }
 
 function buildCategoryData(totalKwh) {
-  // Generate random percentages within bounds, then normalise to 100%
   const raw = CATEGORIES.map((c) => ({
     name: c.name,
     rawPct: rand(c.minPct, c.maxPct),
@@ -49,28 +120,15 @@ function peakHoursText() {
 }
 
 export function generateEnergyData() {
-  // Monthly: 350–450 kWh
   const monthlyTotal = round1(rand(350, 450));
-  // Weekly ≈ monthly / 4.3
   const weeklyTotal = round1(monthlyTotal / 4.3);
-  // Daily ≈ monthly / 30
   const dailyTotal = round1(monthlyTotal / 30);
 
   const today = new Date();
   const day = today.getDate();
   const monthNames = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
   ];
   const mon = monthNames[today.getMonth()];
   const year = today.getFullYear();
@@ -123,6 +181,7 @@ export function generateEnergyData() {
         savings: `$${round1(monthlyTotal * 0.012)}/month`,
       },
     },
+    source: "local",
   };
 }
 

@@ -47,7 +47,7 @@ import {
   TYPOGRAPHY,
 } from "../theme/theme";
 import { useGP } from "../context/GPContext";
-import { generateEnergyData, computeQuickStats } from "../services/energyDataService";
+import { generateEnergyData, computeQuickStats, fetchEnergyFromAPI, fetchQuickStatsFromAPI } from "../services/energyDataService";
 import { NOTIFICATIONS } from "../services/notificationData";
 import { USER_PROFILE } from "../data/profileData";
 
@@ -217,12 +217,33 @@ export default function HomeScreen({ navigation }) {
 
   const greenUpDone = taskDone || completedQuestIds.has("ac25");
 
-  // Energy data from service (generated once per session)
-  const PERIOD_DATA = useMemo(() => generateEnergyData(), []);
-  const quickStatsData = useMemo(
-    () => computeQuickStats(PERIOD_DATA.monthly.data),
-    [PERIOD_DATA],
+  // Energy data — try ML API first, fall back to local generation
+  const [energyData, setEnergyData] = useState(() => generateEnergyData());
+  const [dataSource, setDataSource] = useState("local");
+  const [quickStatsData, setQuickStatsData] = useState(() =>
+    computeQuickStats(generateEnergyData().monthly.data),
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    console.log("[Home] Fetching energy data from ML API...");
+    (async () => {
+      const apiData = await fetchEnergyFromAPI();
+      if (apiData && !cancelled) {
+        console.log("[Home] ✓ Using ML model data");
+        setEnergyData(apiData);
+        setDataSource("ml-model");
+        const apiStats = await fetchQuickStatsFromAPI();
+        if (apiStats && !cancelled) setQuickStatsData(apiStats);
+        else if (!cancelled) setQuickStatsData(computeQuickStats(apiData.monthly.data));
+      } else {
+        console.log("[Home] Using local fallback data");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const PERIOD_DATA = energyData;
 
   // Derived data from selected period
   const current = PERIOD_DATA[period];
@@ -319,6 +340,13 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.cardSub}>
             {current.subtitle} · {current.badge}
           </Text>
+
+          {dataSource === "ml-model" && (
+            <View style={styles.mlBadge}>
+              <Bot size={12} color={COLORS.mint} strokeWidth={2} />
+              <Text style={styles.mlBadgeText}>ML-Powered Prediction</Text>
+            </View>
+          )}
 
           <DonutChart data={chartData} totalKwh={totalKwh} />
 
@@ -620,6 +648,20 @@ const styles = StyleSheet.create({
   },
   cardTitle: { ...TYPOGRAPHY.h4, color: COLORS.textHeading },
   cardSub: { ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginBottom: SPACING.xs },
+
+  // ML-powered badge
+  mlBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 4,
+    backgroundColor: COLORS.mintPale,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: SPACING.xs,
+  },
+  mlBadgeText: { ...TYPOGRAPHY.micro, color: COLORS.mint, fontSize: 9, fontWeight: "700" },
 
   // Dominant highlight
   dominantRow: {
