@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -6,7 +6,8 @@ import {
   StyleSheet,
   SafeAreaView,
   StatusBar,
-} from 'react-native';
+  Animated,
+} from "react-native";
 import {
   Flame,
   Leaf,
@@ -15,8 +16,7 @@ import {
   Star,
   Trophy,
 } from 'lucide-react-native';
-import { MotiView } from 'moti';
-import GradientHeader from '../components/GradientHeader';
+import GradientHeader from "../components/GradientHeader";
 import StyledCard     from '../components/StyledCard';
 import TaskCard       from '../components/TaskCard';
 import { COLORS, GRADIENTS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY, getLevel, getLevelProgress } from '../theme/theme';
@@ -50,6 +50,33 @@ const streak = StyleSheet.create({
   count: { ...TYPOGRAPHY.h4, color: COLORS.textWhite },
   label: { ...TYPOGRAPHY.captionBold, color: COLORS.textWhiteSub },
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// All-done celebration banner with built-in Animated scale-in
+// ─────────────────────────────────────────────────────────────────────────────
+function AllDoneBanner() {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.92)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(opacity, { toValue: 1, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, damping: 14, useNativeDriver: true }),
+    ]).start();
+  }, [opacity, scale]);
+
+  return (
+    <Animated.View style={[styles.allDoneBanner, { opacity, transform: [{ scale }] }]}>
+      <Star size={24} color={COLORS.gold} strokeWidth={2} fill={COLORS.gold} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.allDoneTitle}>All quests complete! 🎉</Text>
+        <Text style={styles.allDoneSub}>
+          Come back tomorrow for a fresh set of Eco-Quests.
+        </Text>
+      </View>
+    </Animated.View>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function JouleBuddyScreen() {
@@ -187,22 +214,7 @@ export default function JouleBuddyScreen() {
         ))}
 
         {/* ── All-done celebration banner ── */}
-        {allDone && (
-          <MotiView
-            from={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'spring', damping: 14 }}
-            style={styles.allDoneBanner}
-          >
-            <Star size={24} color={COLORS.gold} strokeWidth={2} fill={COLORS.gold} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.allDoneTitle}>All quests complete! 🎉</Text>
-              <Text style={styles.allDoneSub}>
-                Come back tomorrow for a fresh set of Eco-Quests.
-              </Text>
-            </View>
-          </MotiView>
-        )}
+        {allDone && <AllDoneBanner />}
 
         {/* ── JouleBuddy Tip card ── */}
         <StyledCard delay={sortedQuests.length * 80 + 80} style={styles.tipCard}>

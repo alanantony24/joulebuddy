@@ -1,26 +1,47 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { MotiView } from 'moti';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../theme/theme';
+import React, { useEffect, useRef } from "react";
+import { View, Text, StyleSheet, Animated } from "react-native";
+import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from "../theme/theme";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// StatCard — "Glass" metric tile with moti entry animation
+// StatCard — "Glass" metric tile with built-in Animated entry
 // Props:
 //   icon    – React element (lucide icon)
 //   label   – small grey label
 //   value   – bold display number / text
 //   unit    – optional unit string (e.g. "kWh")
 //   accent  – icon bubble background colour  (default: mintPale)
-//   delay   – moti stagger delay in ms
+//   delay   – stagger delay in ms
 //   style   – outer style overrides
 // ─────────────────────────────────────────────────────────────────────────────
 export default function StatCard({ icon, label, value, unit, accent, delay = 0, style }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(16)).current;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 380,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 380,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [delay, opacity, translateY]);
+
   return (
-    <MotiView
-      from={{ opacity: 0, translateY: 16 }}
-      animate={{ opacity: 1, translateY: 0 }}
-      transition={{ type: 'timing', duration: 380, delay }}
-      style={[styles.card, style]}
+    <Animated.View
+      style={[
+        styles.card,
+        { opacity, transform: [{ translateY }] },
+        style,
+      ]}
     >
       {/* Icon bubble */}
       <View style={[styles.iconBubble, { backgroundColor: accent ?? COLORS.mintPale }]}>
@@ -35,27 +56,27 @@ export default function StatCard({ icon, label, value, unit, accent, delay = 0, 
         <Text style={styles.value} numberOfLines={1}>{value}</Text>
         {unit ? <Text style={styles.unit}>{unit}</Text> : null}
       </View>
-    </MotiView>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: RADIUS.card,           // 24 px
+    borderRadius: RADIUS.card,
     padding: SPACING.base,
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
     gap: SPACING.xs,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,     // subtle glass border
-    ...SHADOWS.md,                       // 0.10 opacity
+    borderColor: COLORS.borderLight,
+    ...SHADOWS.md,
   },
   iconBubble: {
     width: 42,
     height: 42,
     borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 4,
   },
   label: {
@@ -63,8 +84,8 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
   },
   valueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    flexDirection: "row",
+    alignItems: "baseline",
     gap: 4,
   },
   value: {
