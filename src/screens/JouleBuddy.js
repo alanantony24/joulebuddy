@@ -6,199 +6,254 @@ import {
   StyleSheet,
   SafeAreaView,
   StatusBar,
-  TouchableOpacity,
 } from 'react-native';
 import {
   Flame,
-  Trophy,
-  Star,
   Leaf,
-  Sparkles,
   ListChecks,
+  Sparkles,
+  Star,
+  Trophy,
 } from 'lucide-react-native';
-import GreenPointsHeader from '../components/GreenPointsHeader';
-import TaskCard          from '../components/TaskCard';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY, getLevel, getLevelProgress } from '../theme/theme';
+import { MotiView } from 'moti';
+import GradientHeader from '../components/GradientHeader';
+import StyledCard     from '../components/StyledCard';
+import TaskCard       from '../components/TaskCard';
+import { COLORS, GRADIENTS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY, getLevel, getLevelProgress } from '../theme/theme';
 import { useGP } from '../context/GPContext';
 
 // ─────────────────────────────────────────────────────────────────────────────
-export default function JouleBuddyScreen() {
-  const { totalGP, streak, quests, isCompleted, completeQuest, completedQuestIds } = useGP();
+// Streak badge — rendered inside the GradientHeader
+// ─────────────────────────────────────────────────────────────────────────────
+function StreakBadge({ count }) {
+  return (
+    <View style={streak.pill}>
+      <Flame size={16} color="#FF7043" strokeWidth={2.5} />
+      <Text style={streak.count}>{count}</Text>
+      <Text style={streak.label}>
+        Day{count !== 1 ? 's' : ''} Streak{count >= 3 ? ' 🔥' : ''}
+      </Text>
+    </View>
+  );
+}
+const streak = StyleSheet.create({
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  count: { ...TYPOGRAPHY.h4, color: COLORS.textWhite },
+  label: { ...TYPOGRAPHY.captionBold, color: COLORS.textWhiteSub },
+});
 
-  const lvl         = getLevel(totalGP);
-  const progress    = getLevelProgress(totalGP);
-  const doneCount   = completedQuestIds.size;
-  const totalCount  = quests.length;
-  const gpToday     = useMemo(
+// ─────────────────────────────────────────────────────────────────────────────
+export default function JouleBuddyScreen() {
+  const { totalGP, streak: streakCount, quests, isCompleted, completeQuest, completedQuestIds } = useGP();
+
+  const lvl       = getLevel(totalGP);
+  const progress  = getLevelProgress(totalGP);
+  const doneCount = completedQuestIds.size;
+  const totalCount = quests.length;
+  const gpToday   = useMemo(
     () => quests.filter((q) => isCompleted(q.id)).reduce((s, q) => s + q.gp, 0),
     [quests, isCompleted],
   );
 
+  const allDone = doneCount === totalCount;
+
+  // Build sorted list: pending first, completed second
+  const sortedQuests = useMemo(() => ([
+    ...quests.filter((q) => !isCompleted(q.id)),
+    ...quests.filter((q) =>  isCompleted(q.id)),
+  ]), [quests, isCompleted]);
+
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
-      <GreenPointsHeader title="JouleBuddy" subtitle="Daily Eco-Quests" />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.mint} />
+
+      {/* ── GradientHeader: streak + level title + progress bar ── */}
+      <GradientHeader colors={GRADIENTS.brand}>
+        {/* Row 1: Streak badge + GP today pill */}
+        <View style={styles.headerTopRow}>
+          <StreakBadge count={streakCount} />
+          <View style={styles.gpTodayPill}>
+            <Leaf size={13} color={COLORS.mintDark} strokeWidth={2.5} />
+            <Text style={styles.gpTodayText}>+{gpToday} GP today</Text>
+          </View>
+        </View>
+
+        {/* Row 2: Level heading */}
+        <View style={styles.levelHeadRow}>
+          <Text style={styles.levelTitle}>
+            GreenUp Level: {lvl.title} {lvl.icon}
+          </Text>
+          <View style={[styles.levelBadge, { backgroundColor: lvl.color }]}>
+            <Trophy size={13} color={COLORS.textWhite} strokeWidth={2.5} />
+            <Text style={styles.levelBadgeText}>Lv.{lvl.level}</Text>
+          </View>
+        </View>
+
+        {/* Row 3: Custom horizontal progress bar */}
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${Math.round(progress * 100)}%`,
+                backgroundColor: lvl.color,
+              },
+            ]}
+          />
+        </View>
+        <View style={styles.progressLabels}>
+          <Text style={styles.progressLabel}>{lvl.min.toLocaleString()} GP</Text>
+          <Text style={styles.progressLabel}>
+            {lvl.level < 5
+              ? `${(lvl.max - totalGP).toLocaleString()} to next level`
+              : '🏆 Max Level!'}
+          </Text>
+          {lvl.level < 5 && (
+            <Text style={styles.progressLabel}>{lvl.max.toLocaleString()} GP</Text>
+          )}
+        </View>
+      </GradientHeader>
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Streak + Level hero card ── */}
-        <View style={styles.heroCard}>
-          {/* Streak */}
-          <View style={styles.heroStat}>
-            <View style={[styles.heroIcon, { backgroundColor: COLORS.orangeLight }]}>
-              <Flame size={22} color={COLORS.orange} strokeWidth={2.5} />
+        {/* ── Today's Stats card ── */}
+        <StyledCard delay={0}>
+          <View style={styles.statsRow}>
+            {/* Streak */}
+            <View style={styles.statItem}>
+              <View style={[styles.statIcon, { backgroundColor: COLORS.orangeLight }]}>
+                <Flame size={20} color={COLORS.orange} strokeWidth={2.5} />
+              </View>
+              <Text style={styles.statValue}>{streakCount}</Text>
+              <Text style={styles.statLabel}>Day Streak</Text>
             </View>
-            <Text style={styles.heroStatValue}>{streak}</Text>
-            <Text style={styles.heroStatLabel}>Day{streak !== 1 ? 's' : ''} Streak{streak >= 3 ? ' 🔥' : ''}</Text>
+
+            <View style={styles.statDivider} />
+
+            {/* GP Today */}
+            <View style={styles.statItem}>
+              <View style={[styles.statIcon, { backgroundColor: COLORS.mintLight }]}>
+                <Leaf size={20} color={COLORS.mint} strokeWidth={2.5} />
+              </View>
+              <Text style={styles.statValue}>+{gpToday}</Text>
+              <Text style={styles.statLabel}>GP Today</Text>
+            </View>
+
+            <View style={styles.statDivider} />
+
+            {/* Quests */}
+            <View style={styles.statItem}>
+              <View style={[styles.statIcon, { backgroundColor: COLORS.purpleLight }]}>
+                <ListChecks size={20} color={COLORS.purple} strokeWidth={2.5} />
+              </View>
+              <Text style={styles.statValue}>{doneCount}/{totalCount}</Text>
+              <Text style={styles.statLabel}>Quests</Text>
+            </View>
           </View>
+        </StyledCard>
 
-          <View style={styles.heroDivider} />
-
-          {/* GP today */}
-          <View style={styles.heroStat}>
-            <View style={[styles.heroIcon, { backgroundColor: COLORS.greenLight }]}>
-              <Leaf size={22} color={COLORS.green} strokeWidth={2.5} />
-            </View>
-            <Text style={styles.heroStatValue}>+{gpToday}</Text>
-            <Text style={styles.heroStatLabel}>GP Today</Text>
-          </View>
-
-          <View style={styles.heroDivider} />
-
-          {/* Quests done */}
-          <View style={styles.heroStat}>
-            <View style={[styles.heroIcon, { backgroundColor: COLORS.primaryLight }]}>
-              <ListChecks size={22} color={COLORS.primary} strokeWidth={2.5} />
-            </View>
-            <Text style={styles.heroStatValue}>{doneCount}/{totalCount}</Text>
-            <Text style={styles.heroStatLabel}>Quests Done</Text>
+        {/* ── Quest section header ── */}
+        <View style={styles.sectionHeader}>
+          <Sparkles size={16} color={COLORS.mint} strokeWidth={2} />
+          <Text style={styles.sectionTitle}>Today's Eco-Quests</Text>
+          <View style={styles.countPill}>
+            <Text style={styles.countPillText}>
+              {totalCount - doneCount} left
+            </Text>
           </View>
         </View>
 
-        {/* ── Level progress card ── */}
-        <View style={styles.levelCard}>
-          <View style={styles.levelTop}>
-            <Text style={styles.levelEmoji}>{lvl.icon}</Text>
+        {/* ── Quest cards — staggered moti entry ── */}
+        {sortedQuests.map((quest, index) => (
+          <TaskCard
+            key={quest.id}
+            quest={quest}
+            completed={isCompleted(quest.id)}
+            onComplete={completeQuest}
+            delay={index * 80}
+          />
+        ))}
+
+        {/* ── All-done celebration banner ── */}
+        {allDone && (
+          <MotiView
+            from={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: 'spring', damping: 14 }}
+            style={styles.allDoneBanner}
+          >
+            <Star size={24} color={COLORS.gold} strokeWidth={2} fill={COLORS.gold} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.levelName}>{lvl.icon} Level {lvl.level}: {lvl.title}</Text>
-              <Text style={styles.levelSub}>
-                {totalGP.toLocaleString()} GP
-                {lvl.level < 5 ? ` · ${(lvl.max - totalGP).toLocaleString()} to next level` : ' · Max Level!'}
+              <Text style={styles.allDoneTitle}>All quests complete! 🎉</Text>
+              <Text style={styles.allDoneSub}>
+                Come back tomorrow for a fresh set of Eco-Quests.
               </Text>
             </View>
-            <View style={[styles.levelBadge, { backgroundColor: lvl.color }]}>
-              <Trophy size={14} color={COLORS.white} strokeWidth={2.5} />
-              <Text style={styles.levelBadgeText}>Lv.{lvl.level}</Text>
+          </MotiView>
+        )}
+
+        {/* ── JouleBuddy Tip card ── */}
+        <StyledCard delay={sortedQuests.length * 80 + 80} style={styles.tipCard}>
+          <View style={styles.tipRow}>
+            <View style={styles.tipIconBubble}>
+              <Sparkles size={18} color={COLORS.mint} strokeWidth={2} />
             </View>
+            <Text style={styles.tipEyebrow}>JouleBuddy Tip</Text>
           </View>
-          <View style={styles.levelBarTrack}>
-            <View
-              style={[
-                styles.levelBarFill,
-                {
-                  width: `${Math.round(progress * 100)}%`,
-                  backgroundColor: lvl.color,
-                },
-              ]}
-            />
-          </View>
-          <View style={styles.levelEndLabels}>
-            <Text style={styles.levelEndText}>{lvl.min.toLocaleString()} GP</Text>
-            {lvl.level < 5 && (
-              <Text style={styles.levelEndText}>{lvl.max.toLocaleString()} GP</Text>
-            )}
-          </View>
-        </View>
-
-        {/* ── Daily quests ── */}
-        <View style={styles.questSection}>
-          <View style={styles.questSectionHeader}>
-            <Sparkles size={16} color={COLORS.primary} strokeWidth={2} />
-            <Text style={styles.questSectionTitle}>Today's Eco-Quests</Text>
-            <View style={styles.questCountPill}>
-              <Text style={styles.questCountText}>{totalCount - doneCount} left</Text>
-            </View>
-          </View>
-
-          {/* Quest list: pending first, completed second */}
-          {[
-            ...quests.filter((q) => !isCompleted(q.id)),
-            ...quests.filter((q) =>  isCompleted(q.id)),
-          ].map((quest) => (
-            <TaskCard
-              key={quest.id}
-              quest={quest}
-              completed={isCompleted(quest.id)}
-              onComplete={completeQuest}
-            />
-          ))}
-
-          {doneCount === totalCount && (
-            <View style={styles.allDoneBanner}>
-              <Star size={22} color={COLORS.gold} strokeWidth={2} fill={COLORS.gold} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.allDoneTitle}>All quests complete! 🎉</Text>
-                <Text style={styles.allDoneSub}>
-                  Come back tomorrow for a fresh set of Eco-Quests.
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* ── Tips ── */}
-        <View style={styles.tipCard}>
-          <Text style={styles.tipEyebrow}>💡  JouleBuddy Tip</Text>
-          <Text style={styles.tipText}>
-            Completing all daily quests gives you a <Text style={{ fontWeight: '700', color: COLORS.green }}>10% GP bonus</Text> at the end of the day — don't miss a single one!
+          <Text style={styles.tipBody}>
+            Complete all daily quests to unlock a{' '}
+            <Text style={styles.tipHighlight}>10% bonus GP</Text> at midnight.
+            Don't miss a single one!
           </Text>
-        </View>
+        </StyledCard>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.primary },
-  scroll: { flex: 1, backgroundColor: COLORS.background },
-  scrollContent: { padding: SPACING.base, gap: SPACING.md, paddingBottom: SPACING.xxl },
+  safe:          { flex: 1, backgroundColor: COLORS.mint },
+  scroll:        { flex: 1, backgroundColor: COLORS.background },
+  scrollContent: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: SPACING.xxl },
 
-  // Hero stats card
-  heroCard: {
+  // ── GradientHeader internals ──
+  headerTopRow: {
     flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.base,
     alignItems: 'center',
-    ...SHADOWS.sm,
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
   },
-  heroStat: { flex: 1, alignItems: 'center', gap: SPACING.xs },
-  heroIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: RADIUS.md,
+  gpTodayPill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  heroStatValue: { ...TYPOGRAPHY.h3, color: COLORS.text },
-  heroStatLabel: { ...TYPOGRAPHY.caption, color: COLORS.textMuted, textAlign: 'center' },
-  heroDivider:   { width: 1, height: 60, backgroundColor: COLORS.borderLight },
+  gpTodayText: { ...TYPOGRAPHY.captionBold, color: COLORS.mintDark },
 
-  // Level card
-  levelCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.base,
-    gap: SPACING.sm,
-    ...SHADOWS.sm,
+  levelHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
   },
-  levelTop: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  levelEmoji: { fontSize: 22 },
-  levelName: { ...TYPOGRAPHY.h4, color: COLORS.text },
-  levelSub:  { ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginTop: 2 },
+  levelTitle: { ...TYPOGRAPHY.h3, color: COLORS.textWhite, flex: 1 },
   levelBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -208,59 +263,95 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     flexShrink: 0,
   },
-  levelBadgeText: { ...TYPOGRAPHY.captionBold, color: COLORS.white },
-  levelBarTrack: {
+  levelBadgeText: { ...TYPOGRAPHY.captionBold, color: COLORS.textWhite },
+
+  // Custom progress bar
+  progressTrack: {
     height: 10,
-    backgroundColor: COLORS.borderLight,
+    backgroundColor: 'rgba(255,255,255,0.25)',
     borderRadius: RADIUS.full,
     overflow: 'hidden',
   },
-  levelBarFill: {
+  progressFill: {
     height: '100%',
     borderRadius: RADIUS.full,
+    minWidth: 8,
   },
-  levelEndLabels: { flexDirection: 'row', justifyContent: 'space-between' },
-  levelEndText:   { ...TYPOGRAPHY.caption, color: COLORS.textMuted },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 5,
+  },
+  progressLabel: { ...TYPOGRAPHY.micro, color: COLORS.textWhiteSub, fontSize: 9 },
 
-  // Quest section
-  questSection: { gap: SPACING.sm },
-  questSectionHeader: {
+  // ── Stats card ──
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  statIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  statValue: { ...TYPOGRAPHY.h3, color: COLORS.textHeading },
+  statLabel: { ...TYPOGRAPHY.caption, color: COLORS.textMuted, textAlign: 'center' },
+  statDivider: {
+    width: 1,
+    height: 56,
+    backgroundColor: COLORS.borderLight,
+  },
+
+  // ── Section header ──
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
   },
-  questSectionTitle: { ...TYPOGRAPHY.h4, color: COLORS.text, flex: 1 },
-  questCountPill: {
-    backgroundColor: COLORS.primaryLight,
+  sectionTitle: { ...TYPOGRAPHY.h4, color: COLORS.textHeading, flex: 1 },
+  countPill: {
+    backgroundColor: COLORS.mintLight,
     borderRadius: RADIUS.full,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  questCountText: { ...TYPOGRAPHY.captionBold, color: COLORS.primary },
+  countPillText: { ...TYPOGRAPHY.captionBold, color: COLORS.mintDark },
 
-  // All done
+  // ── All-done banner ──
   allDoneBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
     backgroundColor: COLORS.goldLight,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.card,
     padding: SPACING.base,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.gold,
+    ...SHADOWS.xs,
   },
-  allDoneTitle: { ...TYPOGRAPHY.h4, color: COLORS.text },
-  allDoneSub:   { ...TYPOGRAPHY.bodySm, color: COLORS.textSub, marginTop: 2 },
+  allDoneTitle: { ...TYPOGRAPHY.h4, color: COLORS.textHeading },
+  allDoneSub:   { ...TYPOGRAPHY.bodySm, color: COLORS.textMuted, marginTop: 2 },
 
-  // Tip
-  tipCard: {
-    backgroundColor: COLORS.greenPale,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.base,
-    gap: SPACING.sm,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.green,
+  // ── Tip card (overlaid on StyledCard) ──
+  tipCard: { backgroundColor: COLORS.mintPale, borderWidth: 1, borderColor: COLORS.mintLight },
+  tipRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm },
+  tipIconBubble: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.mintLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  tipEyebrow: { ...TYPOGRAPHY.captionBold, color: COLORS.greenDark },
-  tipText:    { ...TYPOGRAPHY.bodySm, color: COLORS.textSub, lineHeight: 20 },
+  tipEyebrow: { ...TYPOGRAPHY.captionBold, color: COLORS.mintDark },
+  tipBody:    { ...TYPOGRAPHY.bodySm, color: COLORS.textBody, lineHeight: 20 },
+  tipHighlight: { fontWeight: '700', color: COLORS.mint },
 });

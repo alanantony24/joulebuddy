@@ -17,239 +17,209 @@ import {
   ImageIcon,
   X,
   Leaf,
-  ChevronRight,
   Sparkles,
 } from 'lucide-react-native';
+import StyledCard from './StyledCard';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../theme/theme';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Difficulty badge colours
+// Difficulty badge tokens
 // ─────────────────────────────────────────────────────────────────────────────
-const DIFF_COLORS = {
-  Easy:   { bg: COLORS.greenLight,   text: COLORS.greenDark },
-  Medium: { bg: COLORS.orangeLight,  text: COLORS.orange    },
-  Hard:   { bg: COLORS.errorLight,   text: COLORS.error     },
+const DIFF = {
+  Easy:   { bg: COLORS.mintLight,    text: COLORS.mintDark   },
+  Medium: { bg: COLORS.warningLight, text: COLORS.warning    },
+  Hard:   { bg: COLORS.errorLight,   text: COLORS.error      },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TaskCard
 // Props:
 //   quest      – quest object from QUEST_CATALOGUE
-//   completed  – boolean (controlled by parent via GPContext)
-//   onComplete – callback(questId, gp) called after photo verification passes
+//   completed  – boolean (driven by GPContext)
+//   onComplete – callback(questId, gp) after photo verification
+//   delay      – moti stagger delay in ms (default 0)
 // ─────────────────────────────────────────────────────────────────────────────
-export default function TaskCard({ quest, completed, onComplete }) {
-  const [modalVisible, setModalVisible]   = useState(false);
-  const [previewUri,   setPreviewUri]     = useState(null);
-  const [confirming,   setConfirming]     = useState(false);
-  const [celebrating,  setCelebrating]    = useState(false);
+export default function TaskCard({ quest, completed, onComplete, delay = 0 }) {
+  const [modalVisible, setModalVisible] = useState(false);
+  const [previewUri,   setPreviewUri]   = useState(null);
+  const [confirming,   setConfirming]   = useState(false);
+  const [celebrating,  setCelebrating]  = useState(false);
 
-  const diff = DIFF_COLORS[quest.difficulty] ?? DIFF_COLORS.Easy;
+  const diff = DIFF[quest.difficulty] ?? DIFF.Easy;
 
-  // ── Request permissions helper ──────────────────────────────────────────────
+  // ── Permissions ─────────────────────────────────────────────────────────────
   const ensurePermission = async (type) => {
-    if (type === 'camera') {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      return status === 'granted';
-    }
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const fn = type === 'camera'
+      ? ImagePicker.requestCameraPermissionsAsync
+      : ImagePicker.requestMediaLibraryPermissionsAsync;
+    const { status } = await fn();
     return status === 'granted';
   };
 
-  // ── Launch camera ────────────────────────────────────────────────────────────
+  // ── Camera ───────────────────────────────────────────────────────────────────
   const launchCamera = useCallback(async () => {
-    const ok = await ensurePermission('camera');
-    if (!ok) {
+    if (!(await ensurePermission('camera'))) {
       Alert.alert('Permission Needed', 'Camera access is required to verify this quest.');
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.75,
+      mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.75,
     });
     if (!result.canceled) setPreviewUri(result.assets[0].uri);
   }, []);
 
-  // ── Launch library ───────────────────────────────────────────────────────────
+  // ── Library ──────────────────────────────────────────────────────────────────
   const launchLibrary = useCallback(async () => {
-    const ok = await ensurePermission('library');
-    if (!ok) {
-      Alert.alert('Permission Needed', 'Photo library access is required to verify this quest.');
+    if (!(await ensurePermission('library'))) {
+      Alert.alert('Permission Needed', 'Photo library access is required.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.75,
+      mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.75,
     });
     if (!result.canceled) setPreviewUri(result.assets[0].uri);
   }, []);
 
-  // ── Confirm verification ─────────────────────────────────────────────────────
+  // ── Confirm ──────────────────────────────────────────────────────────────────
   const confirmVerification = useCallback(async () => {
     setConfirming(true);
-    // Simulated 1.2 s "AI processing" delay for UX delight
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 1200));   // simulated AI verify
     setConfirming(false);
     setModalVisible(false);
     setPreviewUri(null);
-
-    // Flash celebration state briefly
     setCelebrating(true);
     setTimeout(() => setCelebrating(false), 2000);
-
-    // Award points via context
     onComplete(quest.id, quest.gp);
   }, [quest, onComplete]);
 
-  // ── Reset modal ──────────────────────────────────────────────────────────────
-  const closeModal = () => {
-    setModalVisible(false);
-    setPreviewUri(null);
-  };
+  const closeModal = () => { setModalVisible(false); setPreviewUri(null); };
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Card body ── */}
-      <View
-        style={[
-          styles.card,
-          completed && styles.cardDone,
-          celebrating && styles.cardCelebrating,
-        ]}
+      {/* ── Animated card (StyledCard handles moti slide-up + white 24px card) ── */}
+      <StyledCard
+        delay={delay}
+        glow={celebrating}
+        style={styles.cardOverride}
       >
-        {/* Left colour strip */}
-        <View style={[styles.strip, { backgroundColor: quest.color }]} />
-
-        {/* Icon bubble */}
-        <View style={[styles.iconBubble, { backgroundColor: quest.colorLight }]}>
-          <QuestIcon name={quest.icon} color={quest.color} size={22} />
+        {/* Left: icon in coloured circle */}
+        <View style={[styles.iconCircle, { backgroundColor: quest.colorLight }]}>
+          <QuestIcon name={quest.icon} color={quest.color} size={24} />
         </View>
 
-        {/* Text block */}
-        <View style={styles.textBlock}>
-          <View style={styles.titleRow}>
-            <Text style={[styles.questTitle, completed && styles.textStrike]}>
-              {quest.title}
-            </Text>
-            <View style={[styles.diffPill, { backgroundColor: diff.bg }]}>
-              <Text style={[styles.diffText, { color: diff.text }]}>
+        {/* Center: title, description, GP pill */}
+        <View style={styles.center}>
+          <Text style={[styles.questTitle, completed && styles.strikethrough]}>
+            {quest.title}
+          </Text>
+          <Text style={styles.questDesc} numberOfLines={2}>
+            {quest.description}
+          </Text>
+          <View style={styles.metaRow}>
+            {/* GP reward */}
+            <View style={styles.gpChip}>
+              <Leaf size={11} color={COLORS.mintDark} strokeWidth={2.5} />
+              <Text style={styles.gpChipText}>+{quest.gp} GP</Text>
+            </View>
+            {/* Difficulty */}
+            <View style={[styles.diffChip, { backgroundColor: diff.bg }]}>
+              <Text style={[styles.diffChipText, { color: diff.text }]}>
                 {quest.difficulty}
               </Text>
             </View>
           </View>
-
-          <Text style={styles.questDesc} numberOfLines={2}>
-            {quest.description}
-          </Text>
-
-          {/* GP reward */}
-          <View style={styles.rewardRow}>
-            <Leaf size={12} color={COLORS.green} strokeWidth={2.5} />
-            <Text style={styles.rewardText}>+{quest.gp} GP</Text>
-            <View style={styles.categoryPill}>
-              <Text style={styles.categoryText}>{quest.category}</Text>
-            </View>
-          </View>
         </View>
 
-        {/* CTA button */}
+        {/* Right: Verify pill  OR  Done checkmark */}
         <View style={styles.ctaCol}>
           {completed ? (
             <View style={styles.doneCircle}>
-              <Check size={16} color={COLORS.white} strokeWidth={3} />
+              <Check size={16} color={COLORS.textWhite} strokeWidth={3} />
             </View>
           ) : (
             <TouchableOpacity
-              style={styles.verifyBtn}
+              style={styles.verifyPill}
               onPress={() => setModalVisible(true)}
               activeOpacity={0.8}
             >
-              <Camera size={14} color={COLORS.white} strokeWidth={2.5} />
+              <Camera size={13} color={COLORS.textWhite} strokeWidth={2.5} />
               <Text style={styles.verifyText}>Verify</Text>
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </StyledCard>
 
-      {/* ── Photo Verification Modal ── */}
+      {/* ── Photo Verification Bottom Sheet Modal ── */}
       <Modal
         visible={modalVisible}
         animationType="slide"
-        transparent
+        transparent={true}
         onRequestClose={closeModal}
       >
-        <View style={styles.modalOverlay}>
-          <Pressable style={styles.modalBackdrop} onPress={closeModal} />
-          <View style={styles.modalSheet}>
+        <View style={styles.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeModal} />
+          <View style={styles.sheet}>
 
-            {/* Handle */}
-            <View style={styles.modalHandle} />
+            {/* Drag handle */}
+            <View style={styles.handle} />
 
             {/* Header */}
-            <View style={styles.modalHeader}>
-              <View style={styles.modalTitleBlock}>
-                <Sparkles size={18} color={COLORS.primary} strokeWidth={2} />
-                <Text style={styles.modalTitle}>Photo Verification</Text>
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetTitleRow}>
+                <Sparkles size={18} color={COLORS.mint} strokeWidth={2} />
+                <Text style={styles.sheetTitle}>Photo Verification</Text>
               </View>
-              <TouchableOpacity onPress={closeModal} style={styles.modalClose}>
+              <TouchableOpacity onPress={closeModal} style={{ padding: SPACING.xs }}>
                 <X size={20} color={COLORS.textMuted} strokeWidth={2} />
               </TouchableOpacity>
             </View>
 
-            {/* Quest recap */}
-            <View style={[styles.modalQuestBadge, { backgroundColor: quest.colorLight }]}>
+            {/* Quest recap badge */}
+            <View style={[styles.questBadge, { backgroundColor: quest.colorLight }]}>
               <QuestIcon name={quest.icon} color={quest.color} size={18} />
-              <Text style={[styles.modalQuestName, { color: quest.color }]}>
+              <Text style={[styles.questBadgeName, { color: quest.color }]} numberOfLines={1}>
                 {quest.title}
               </Text>
-              <View style={styles.gpPillModal}>
-                <Leaf size={11} color={COLORS.greenDark} strokeWidth={2.5} />
-                <Text style={styles.gpPillText}>+{quest.gp} GP</Text>
+              <View style={styles.gpBadgePill}>
+                <Leaf size={10} color={COLORS.mintDark} strokeWidth={2.5} />
+                <Text style={styles.gpBadgeText}>+{quest.gp} GP</Text>
               </View>
             </View>
 
-            {/* Instructions */}
-            <Text style={styles.modalInstruction}>
-              Take or upload a photo to prove you completed this quest.
-              Our AI will verify your submission instantly.
+            {/* Instruction */}
+            <Text style={styles.instruction}>
+              Take or upload a photo proving you completed this quest.{'\n'}
+              Our AI verifies your submission instantly.
             </Text>
 
-            {/* Preview area */}
+            {/* Preview OR picker buttons */}
             {previewUri ? (
-              <View style={styles.previewContainer}>
-                <Image source={{ uri: previewUri }} style={styles.previewImage} />
-                <TouchableOpacity
-                  style={styles.retakeBtn}
-                  onPress={() => setPreviewUri(null)}
-                >
-                  <X size={14} color={COLORS.white} strokeWidth={2.5} />
+              <View style={styles.preview}>
+                <Image source={{ uri: previewUri }} style={styles.previewImg} />
+                <TouchableOpacity style={styles.retakeBtn} onPress={() => setPreviewUri(null)}>
+                  <X size={13} color={COLORS.textWhite} strokeWidth={2.5} />
                   <Text style={styles.retakeText}>Retake</Text>
                 </TouchableOpacity>
               </View>
             ) : (
-              /* Picker buttons */
               <View style={styles.pickerRow}>
-                <TouchableOpacity style={styles.pickerBtn} onPress={launchCamera} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.pickerCard} onPress={launchCamera} activeOpacity={0.8}>
                   <View style={styles.pickerIcon}>
-                    <Camera size={22} color={COLORS.primary} strokeWidth={2} />
+                    <Camera size={22} color={COLORS.mint} strokeWidth={2} />
                   </View>
                   <Text style={styles.pickerLabel}>Take Photo</Text>
                   <Text style={styles.pickerSub}>Camera</Text>
                 </TouchableOpacity>
 
-                <View style={styles.pickerDivider} />
+                <View style={styles.pickerSep} />
 
-                <TouchableOpacity style={styles.pickerBtn} onPress={launchLibrary} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.pickerCard} onPress={launchLibrary} activeOpacity={0.8}>
                   <View style={styles.pickerIcon}>
-                    <ImageIcon size={22} color={COLORS.primary} strokeWidth={2} />
+                    <ImageIcon size={22} color={COLORS.mint} strokeWidth={2} />
                   </View>
                   <Text style={styles.pickerLabel}>Upload Photo</Text>
-                  <Text style={styles.pickerSub}>Photo Library</Text>
+                  <Text style={styles.pickerSub}>Library</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -264,12 +234,12 @@ export default function TaskCard({ quest, completed, onComplete }) {
               >
                 {confirming ? (
                   <>
-                    <ActivityIndicator size="small" color={COLORS.white} />
+                    <ActivityIndicator size="small" color={COLORS.textWhite} />
                     <Text style={styles.confirmText}>Verifying with AI…</Text>
                   </>
                 ) : (
                   <>
-                    <Check size={18} color={COLORS.white} strokeWidth={3} />
+                    <Check size={18} color={COLORS.textWhite} strokeWidth={3} />
                     <Text style={styles.confirmText}>Confirm & Earn {quest.gp} GP</Text>
                   </>
                 )}
@@ -282,295 +252,172 @@ export default function TaskCard({ quest, completed, onComplete }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Inline icon resolver (maps string names from quest catalogue → lucide icons)
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Icon resolver ────────────────────────────────────────────────────────────
 function QuestIcon({ name, color, size }) {
-  const props = { size, color, strokeWidth: 2 };
   const icons = {
-    Wind:         require('lucide-react-native').Wind,
-    ZapOff:       require('lucide-react-native').ZapOff,
-    Droplets:     require('lucide-react-native').Droplets,
-    Sun:          require('lucide-react-native').Sun,
-    Thermometer:  require('lucide-react-native').Thermometer,
-    Leaf:         require('lucide-react-native').Leaf,
+    Wind:        require('lucide-react-native').Wind,
+    ZapOff:      require('lucide-react-native').ZapOff,
+    Droplets:    require('lucide-react-native').Droplets,
+    Sun:         require('lucide-react-native').Sun,
+    Thermometer: require('lucide-react-native').Thermometer,
+    Leaf:        require('lucide-react-native').Leaf,
   };
   const Icon = icons[name] ?? require('lucide-react-native').Leaf;
-  return <Icon {...props} />;
+  return <Icon size={size} color={color} strokeWidth={2} />;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  // ── Card ──
-  card: {
+  // ── Card override (StyledCard base = white, 24px, shadow) ──
+  cardOverride: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
+    padding: SPACING.base,          // tighter than StyledCard's 20px default
     marginBottom: SPACING.sm,
-    overflow: 'hidden',
-    ...SHADOWS.sm,
+    gap: SPACING.md,
   },
-  cardDone: {
-    opacity: 0.72,
-  },
-  cardCelebrating: {
-    borderWidth: 1.5,
-    borderColor: COLORS.green,
-  },
-  strip: {
-    width: 5,
-    alignSelf: 'stretch',
-  },
-  iconBubble: {
-    width: 46,
-    height: 46,
-    borderRadius: RADIUS.md,
+
+  // Left icon circle
+  iconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
-    margin: SPACING.md,
     flexShrink: 0,
   },
-  textBlock: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    paddingRight: SPACING.sm,
-    gap: 4,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    flexWrap: 'wrap',
-  },
+
+  // Center text block
+  center: { flex: 1, gap: 4 },
   questTitle: {
     ...TYPOGRAPHY.h4,
-    color: COLORS.text,
-    flexShrink: 1,
+    color: COLORS.textHeading,
+    lineHeight: 20,
   },
-  textStrike: {
+  strikethrough: {
     textDecorationLine: 'line-through',
     color: COLORS.textMuted,
   },
   questDesc: {
     ...TYPOGRAPHY.bodySm,
-    color: COLORS.textSub,
+    color: COLORS.textBody,
+    lineHeight: 17,
   },
-  rewardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  rewardText: {
-    ...TYPOGRAPHY.captionBold,
-    color: COLORS.green,
-  },
-  categoryPill: {
-    backgroundColor: COLORS.borderLight,
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 2 },
+  gpChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: COLORS.mintLight,
     borderRadius: RADIUS.full,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    marginLeft: 4,
+    paddingHorizontal: 8, paddingVertical: 3,
   },
-  categoryText: {
-    ...TYPOGRAPHY.micro,
-    color: COLORS.textMuted,
-    fontSize: 9,
-  },
-  diffPill: {
+  gpChipText: { ...TYPOGRAPHY.captionBold, color: COLORS.mintDark, fontSize: 11 },
+  diffChip: {
     borderRadius: RADIUS.full,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingHorizontal: 7, paddingVertical: 3,
   },
-  diffText: {
-    ...TYPOGRAPHY.micro,
-    fontSize: 9,
-  },
+  diffChipText: { ...TYPOGRAPHY.micro, fontSize: 9 },
 
-  // ── CTA ──
-  ctaCol: {
-    paddingRight: SPACING.md,
-    flexShrink: 0,
-  },
-  verifyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: COLORS.primary,
+  // Right CTA
+  ctaCol: { flexShrink: 0 },
+  verifyPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: COLORS.mint,
     borderRadius: RADIUS.full,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14, paddingVertical: 9,
+    ...SHADOWS.mint,
   },
-  verifyText: {
-    ...TYPOGRAPHY.captionBold,
-    color: COLORS.white,
-  },
+  verifyText: { ...TYPOGRAPHY.captionBold, color: COLORS.textWhite },
   doneCircle: {
-    width: 36,
-    height: 36,
+    width: 38, height: 38,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.green,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: COLORS.mint,
+    alignItems: 'center', justifyContent: 'center',
   },
 
-  // ── Modal overlay ──
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.overlay,
-  },
-  modalSheet: {
+  // ── Modal sheet ──
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  sheet: {
     backgroundColor: COLORS.card,
-    borderTopLeftRadius: RADIUS.xxl,
-    borderTopRightRadius: RADIUS.xxl,
-    paddingHorizontal: SPACING.base,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xxxl,
     paddingTop: SPACING.md,
     gap: SPACING.md,
     ...SHADOWS.lg,
   },
-  modalHandle: {
+  handle: {
     alignSelf: 'center',
-    width: 40,
-    height: 4,
+    width: 40, height: 4,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.border,
     marginBottom: SPACING.sm,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  sheetHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  modalTitleBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
+  sheetTitleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  sheetTitle: { ...TYPOGRAPHY.h3, color: COLORS.textHeading },
+
+  questBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    borderRadius: RADIUS.md, padding: SPACING.md,
   },
-  modalTitle: {
-    ...TYPOGRAPHY.h3,
-    color: COLORS.text,
-  },
-  modalClose: {
-    padding: SPACING.xs,
-  },
-  modalQuestBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-  },
-  modalQuestName: {
-    ...TYPOGRAPHY.bodyMd,
-    flex: 1,
-    fontWeight: '600',
-  },
-  gpPillModal: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: COLORS.greenLight,
+  questBadgeName: { ...TYPOGRAPHY.bodyMd, flex: 1, fontWeight: '600' },
+  gpBadgePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: COLORS.mintLight,
     borderRadius: RADIUS.full,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 8, paddingVertical: 4,
   },
-  gpPillText: {
-    ...TYPOGRAPHY.captionBold,
-    color: COLORS.greenDark,
-  },
-  modalInstruction: {
+  gpBadgeText: { ...TYPOGRAPHY.captionBold, color: COLORS.mintDark },
+
+  instruction: {
     ...TYPOGRAPHY.bodySm,
-    color: COLORS.textSub,
-    textAlign: 'center',
-    lineHeight: 20,
+    color: COLORS.textBody,
+    textAlign: 'center', lineHeight: 20,
   },
 
-  // ── Picker buttons ──
-  pickerRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  pickerBtn: {
-    flex: 1,
-    alignItems: 'center',
+  // Picker cards
+  pickerRow: { flexDirection: 'row', gap: SPACING.md },
+  pickerCard: {
+    flex: 1, alignItems: 'center',
     backgroundColor: COLORS.background,
     borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.lg,
-    gap: SPACING.sm,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
+    paddingVertical: SPACING.lg, gap: SPACING.sm,
+    borderWidth: 1.5, borderColor: COLORS.border,
   },
   pickerIcon: {
-    width: 52,
-    height: 52,
+    width: 52, height: 52,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: COLORS.mintPale,
+    alignItems: 'center', justifyContent: 'center',
   },
-  pickerLabel: {
-    ...TYPOGRAPHY.bodyMd,
-    color: COLORS.text,
-  },
-  pickerSub: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.textMuted,
-  },
-  pickerDivider: {
-    width: 1,
-    backgroundColor: COLORS.border,
-    alignSelf: 'stretch',
-  },
+  pickerLabel: { ...TYPOGRAPHY.bodyMd, color: COLORS.textHeading },
+  pickerSub:   { ...TYPOGRAPHY.caption, color: COLORS.textMuted },
+  pickerSep:   { width: 1, backgroundColor: COLORS.border, alignSelf: 'stretch' },
 
-  // ── Preview ──
-  previewContainer: {
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  previewImage: {
-    width: '100%',
-    height: 200,
-    resizeMode: 'cover',
-  },
+  // Preview
+  preview: { borderRadius: RADIUS.card, overflow: 'hidden' },
+  previewImg: { width: '100%', height: 200, resizeMode: 'cover' },
   retakeBtn: {
-    position: 'absolute',
-    top: SPACING.sm,
-    right: SPACING.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    position: 'absolute', top: SPACING.sm, right: SPACING.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(0,0,0,0.60)',
     borderRadius: RADIUS.full,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 10, paddingVertical: 5,
   },
-  retakeText: {
-    ...TYPOGRAPHY.captionBold,
-    color: COLORS.white,
-  },
+  retakeText: { ...TYPOGRAPHY.captionBold, color: COLORS.textWhite },
 
-  // ── Confirm button ──
+  // Confirm
   confirmBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: COLORS.green,
+    backgroundColor: COLORS.mint,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.base,
+    ...SHADOWS.mint,
   },
-  confirmBtnLoading: {
-    backgroundColor: COLORS.greenMid,
-  },
-  confirmText: {
-    ...TYPOGRAPHY.h4,
-    color: COLORS.white,
-  },
+  confirmBtnLoading: { backgroundColor: COLORS.mintDark },
+  confirmText: { ...TYPOGRAPHY.h4, color: COLORS.textWhite },
 });

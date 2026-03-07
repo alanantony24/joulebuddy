@@ -16,12 +16,12 @@ const Tab = createBottomTabNavigator();
 // Tab bar icon wrapper — adds the active-state highlight pill
 // ─────────────────────────────────────────────────────────────────────────────
 function TabIcon({ IconComponent, focused, isJoule }) {
-  const activeColor  = isJoule ? COLORS.green    : COLORS.primary;
+  const activeColor   = COLORS.mint;     // Emerald Mint for all active tabs
   const inactiveColor = COLORS.textMuted;
-  const color = focused ? activeColor : inactiveColor;
+  const color         = focused ? activeColor : inactiveColor;
 
   return (
-    <View style={[styles.iconWrap, focused && { backgroundColor: isJoule ? COLORS.greenLight : COLORS.primaryLight }]}>
+    <View style={[styles.iconWrap, focused && { backgroundColor: COLORS.mintLight }]}>
       <IconComponent size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} />
     </View>
   );
@@ -36,7 +36,7 @@ export default function AppNavigator() {
         tabBarStyle: styles.tabBar,
         tabBarShowLabel: true,
         tabBarLabelStyle: styles.tabLabel,
-        tabBarActiveTintColor: COLORS.primary,
+        tabBarActiveTintColor: COLORS.mint,
         tabBarInactiveTintColor: COLORS.textMuted,
       }}
     >
@@ -73,9 +73,8 @@ export default function AppNavigator() {
         component={JouleBuddyScreen}
         options={{
           tabBarLabel: 'JouleBuddy',
-          tabBarActiveTintColor: COLORS.green,
           tabBarIcon: ({ focused }) => (
-            <TabIcon IconComponent={Bot} focused={focused} isJoule />
+            <TabIcon IconComponent={Bot} focused={focused} />
           ),
         }}
       />

@@ -1,51 +1,62 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { MotiView } from 'moti';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../theme/theme';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// StatCard
-// A compact metric tile.
+// StatCard — "Glass" metric tile with moti entry animation
 // Props:
-//   icon       – React element (lucide icon or any component)
-//   label      – small grey label above the number
-//   value      – bold primary number / text
-//   unit       – unit string appended to value (optional)
-//   accent     – background fill colour for the icon bubble (optional)
-//   style      – extra outer styles
+//   icon    – React element (lucide icon)
+//   label   – small grey label
+//   value   – bold display number / text
+//   unit    – optional unit string (e.g. "kWh")
+//   accent  – icon bubble background colour  (default: mintPale)
+//   delay   – moti stagger delay in ms
+//   style   – outer style overrides
 // ─────────────────────────────────────────────────────────────────────────────
-export default function StatCard({ icon, label, value, unit, accent, style }) {
-  const iconBg = accent ?? COLORS.primaryLight;
-
+export default function StatCard({ icon, label, value, unit, accent, delay = 0, style }) {
   return (
-    <View style={[styles.card, style]}>
-      <View style={[styles.iconBubble, { backgroundColor: iconBg }]}>
+    <MotiView
+      from={{ opacity: 0, translateY: 16 }}
+      animate={{ opacity: 1, translateY: 0 }}
+      transition={{ type: 'timing', duration: 380, delay }}
+      style={[styles.card, style]}
+    >
+      {/* Icon bubble */}
+      <View style={[styles.iconBubble, { backgroundColor: accent ?? COLORS.mintPale }]}>
         {icon}
       </View>
+
+      {/* Label */}
       <Text style={styles.label} numberOfLines={1}>{label}</Text>
+
+      {/* Value + unit */}
       <View style={styles.valueRow}>
         <Text style={styles.value} numberOfLines={1}>{value}</Text>
         {unit ? <Text style={styles.unit}>{unit}</Text> : null}
       </View>
-    </View>
+    </MotiView>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
+    borderRadius: RADIUS.card,           // 24 px
+    padding: SPACING.base,
     alignItems: 'flex-start',
     gap: SPACING.xs,
-    ...SHADOWS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,     // subtle glass border
+    ...SHADOWS.md,                       // 0.10 opacity
   },
   iconBubble: {
-    width: 40,
-    height: 40,
+    width: 42,
+    height: 42,
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   label: {
     ...TYPOGRAPHY.caption,
@@ -54,11 +65,11 @@ const styles = StyleSheet.create({
   valueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 3,
+    gap: 4,
   },
   value: {
     ...TYPOGRAPHY.h3,
-    color: COLORS.text,
+    color: COLORS.textHeading,
   },
   unit: {
     ...TYPOGRAPHY.captionBold,

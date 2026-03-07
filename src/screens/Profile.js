@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import {
-  User,
   Phone,
   CreditCard,
   Home,
@@ -27,12 +26,12 @@ import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY, getLevel, getLevelProgres
 import { useGP } from '../context/GPContext';
 import { BADGE_CATALOGUE } from '../context/GPContext';
 
-// ─── Settings list items ──────────────────────────────────────────────────────
+// ─── List item ────────────────────────────────────────────────────────────────
 function ListItem({ icon: Icon, iconColor, iconBg, label, desc, danger, onPress, showArrow = true }) {
   return (
     <TouchableOpacity style={styles.listItem} onPress={onPress} activeOpacity={0.75}>
-      <View style={[styles.listIcon, { backgroundColor: iconBg ?? COLORS.primaryLight }]}>
-        <Icon size={18} color={iconColor ?? COLORS.primary} strokeWidth={2} />
+      <View style={[styles.listIcon, { backgroundColor: iconBg ?? COLORS.mintPale }]}>
+        <Icon size={18} color={iconColor ?? COLORS.mint} strokeWidth={2} />
       </View>
       <View style={styles.listText}>
         <Text style={[styles.listLabel, danger && { color: COLORS.error }]}>{label}</Text>
@@ -51,7 +50,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.mint} />
       <GreenPointsHeader title="My Profile" subtitle="WattWise account" />
 
       <ScrollView
@@ -59,7 +58,7 @@ export default function ProfileScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Avatar hero ── */}
+        {/* Avatar hero */}
         <View style={styles.avatarCard}>
           <View style={styles.avatarCircle}>
             <Text style={styles.avatarInitials}>AAJ</Text>
@@ -76,7 +75,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── GP progress card ── */}
+        {/* GP progress card */}
         <View style={styles.gpCard}>
           <View style={styles.gpCardRow}>
             <View style={styles.gpStat}>
@@ -105,11 +104,11 @@ export default function ProfileScreen() {
           <Text style={styles.gpBarHint}>
             {lvl.level < 5
               ? `${(lvl.max - totalGP).toLocaleString()} GP to Level ${lvl.level + 1}`
-              : 'Maximum level reached!'}
+              : 'Maximum level reached! 🏆'}
           </Text>
         </View>
 
-        {/* ── Badge collection ── */}
+        {/* Badge Collection */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Star size={16} color={COLORS.gold} strokeWidth={2} fill={COLORS.gold} />
@@ -143,58 +142,43 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── Personal details ── */}
+        {/* Personal details */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Details</Text>
           <View style={styles.listCard}>
-            <ListItem
-              icon={Phone}
-              label="Phone Number"
-              desc="+65 9123 4567"
-              iconBg={COLORS.primaryLight}
-            />
+            <ListItem icon={Phone}      label="Phone Number"   desc="+65 9123 4567"       iconBg={COLORS.mintPale} />
             <View style={styles.separator} />
-            <ListItem
-              icon={CreditCard}
-              label="Account Number"
-              desc="SP-2024-88451234"
-              iconBg={COLORS.primaryLight}
-            />
+            <ListItem icon={CreditCard} label="Account Number" desc="SP-2024-88451234"    iconBg={COLORS.mintPale} />
             <View style={styles.separator} />
-            <ListItem
-              icon={Home}
-              label="Service Address"
-              desc="Blk 123 Toa Payoh Lor 4, #08-45"
-              iconBg={COLORS.primaryLight}
-            />
+            <ListItem icon={Home}       label="Service Address" desc="Blk 123 Toa Payoh Lor 4, #08-45" iconBg={COLORS.mintPale} />
           </View>
         </View>
 
-        {/* ── Notifications & security ── */}
+        {/* Notifications & Security */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notifications & Security</Text>
           <View style={styles.listCard}>
-            <ListItem icon={Bell}         label="Push Notifications" iconBg={COLORS.orangeLight}  iconColor={COLORS.orange} />
+            <ListItem icon={Bell}        label="Push Notifications" iconBg={COLORS.orangeLight} iconColor={COLORS.orange} />
             <View style={styles.separator} />
-            <ListItem icon={Fingerprint}  label="Biometric Login"    iconBg={COLORS.tealLight}    iconColor={COLORS.teal} />
+            <ListItem icon={Fingerprint} label="Biometric Login"    iconBg={COLORS.blueLight}   iconColor={COLORS.blue} />
             <View style={styles.separator} />
-            <ListItem icon={FileText}     label="Paperless Billing"  iconBg={COLORS.greenLight}   iconColor={COLORS.green} />
+            <ListItem icon={FileText}    label="Paperless Billing"  iconBg={COLORS.mintLight}   iconColor={COLORS.mint} />
           </View>
         </View>
 
-        {/* ── Help ── */}
+        {/* Help & Legal */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Help & Legal</Text>
           <View style={styles.listCard}>
-            <ListItem icon={HelpCircle} label="FAQ & Support"    iconBg={COLORS.primaryLight} />
+            <ListItem icon={HelpCircle} label="FAQ & Support"    iconBg={COLORS.mintPale} />
             <View style={styles.separator} />
-            <ListItem icon={Shield}     label="Privacy Policy"   iconBg={COLORS.primaryLight} />
+            <ListItem icon={Shield}     label="Privacy Policy"   iconBg={COLORS.mintPale} />
             <View style={styles.separator} />
-            <ListItem icon={FileText}   label="Terms of Service" iconBg={COLORS.primaryLight} showArrow={false} desc="v3.2.1" />
+            <ListItem icon={FileText}   label="Terms of Service" iconBg={COLORS.mintPale} showArrow={false} desc="v3.2.1" />
           </View>
         </View>
 
-        {/* ── Logout ── */}
+        {/* Logout */}
         <View style={[styles.section, { marginBottom: SPACING.sm }]}>
           <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.8}>
             <LogOut size={18} color={COLORS.error} strokeWidth={2} />
@@ -207,9 +191,9 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.primary },
-  scroll: { flex: 1, backgroundColor: COLORS.background },
-  scrollContent: { padding: SPACING.base, gap: SPACING.lg, paddingBottom: SPACING.xxl },
+  safe:          { flex: 1, backgroundColor: COLORS.mint },
+  scroll:        { flex: 1, backgroundColor: COLORS.background },
+  scrollContent: { padding: SPACING.lg, gap: SPACING.lg, paddingBottom: SPACING.xxl },
 
   // Avatar card
   avatarCard: {
@@ -217,21 +201,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.base,
     backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.card,
     padding: SPACING.base,
-    ...SHADOWS.sm,
+    ...SHADOWS.md,
   },
   avatarCircle: {
-    width: 68,
-    height: 68,
+    width: 68, height: 68,
     borderRadius: RADIUS.full,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    backgroundColor: COLORS.mint,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  avatarInitials: { ...TYPOGRAPHY.h2, color: COLORS.white },
-  userName:       { ...TYPOGRAPHY.h3, color: COLORS.text },
+  avatarInitials: { ...TYPOGRAPHY.h2, color: COLORS.textWhite },
+  userName:       { ...TYPOGRAPHY.h3, color: COLORS.textHeading },
   userEmail:      { ...TYPOGRAPHY.bodySm, color: COLORS.textMuted, marginTop: 2 },
   tierRow:        { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   tierEmoji:      { fontSize: 13 },
@@ -240,14 +221,14 @@ const styles = StyleSheet.create({
   // GP card
   gpCard: {
     backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.card,
     padding: SPACING.base,
     gap: SPACING.md,
-    ...SHADOWS.sm,
+    ...SHADOWS.md,
   },
   gpCardRow:   { flexDirection: 'row', alignItems: 'center' },
   gpStat:      { flex: 1, alignItems: 'center', gap: 2 },
-  gpStatValue: { ...TYPOGRAPHY.h2, color: COLORS.text },
+  gpStatValue: { ...TYPOGRAPHY.h2, color: COLORS.textHeading },
   gpStatLabel: { ...TYPOGRAPHY.caption, color: COLORS.textMuted },
   gpDivider:   { width: 1, height: 40, backgroundColor: COLORS.borderLight },
   gpBarTrack:  { height: 8, backgroundColor: COLORS.borderLight, borderRadius: RADIUS.full, overflow: 'hidden' },
@@ -257,72 +238,50 @@ const styles = StyleSheet.create({
   // Section
   section:       { gap: SPACING.sm },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  sectionTitle:  { ...TYPOGRAPHY.h4, color: COLORS.text, flex: 1 },
+  sectionTitle:  { ...TYPOGRAPHY.h4, color: COLORS.textHeading, flex: 1 },
   sectionCount:  { ...TYPOGRAPHY.captionBold, color: COLORS.textMuted },
 
   // Badge grid
-  badgeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
+  badgeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   badgeCard: {
     width: '22%',
     backgroundColor: COLORS.card,
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
-    alignItems: 'center',
-    gap: 3,
+    alignItems: 'center', gap: 3,
     ...SHADOWS.xs,
-    minHeight: 80,
-    justifyContent: 'center',
+    minHeight: 80, justifyContent: 'center',
   },
   badgeLocked: {
-    backgroundColor: COLORS.cardAlt,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.background,
+    borderWidth: 1, borderColor: COLORS.borderLight,
     borderStyle: 'dashed',
   },
   badgeEmoji:    { fontSize: 26 },
-  badgeTitle:    { ...TYPOGRAPHY.micro, color: COLORS.text, textAlign: 'center', fontSize: 8 },
+  badgeTitle:    { ...TYPOGRAPHY.micro, color: COLORS.textHeading, textAlign: 'center', fontSize: 8 },
   badgeLockText: { ...TYPOGRAPHY.micro, color: COLORS.textMuted, textAlign: 'center', fontSize: 7, lineHeight: 10 },
 
   // List card
   listCard: {
     backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.card,
     overflow: 'hidden',
-    ...SHADOWS.sm,
+    ...SHADOWS.md,
   },
-  listItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACING.md,
-    gap: SPACING.md,
-  },
-  listIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
+  listItem:  { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, gap: SPACING.md },
+  listIcon:  { width: 38, height: 38, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   listText:  { flex: 1, gap: 2 },
-  listLabel: { ...TYPOGRAPHY.bodyMd, color: COLORS.text },
+  listLabel: { ...TYPOGRAPHY.bodyMd, color: COLORS.textHeading },
   listDesc:  { ...TYPOGRAPHY.caption, color: COLORS.textMuted },
   separator: { height: 1, backgroundColor: COLORS.borderLight, marginLeft: 70 },
 
   // Logout
   logoutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: SPACING.sm,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.card,
     paddingVertical: SPACING.base,
-    borderWidth: 1.5,
-    borderColor: COLORS.error,
+    borderWidth: 1.5, borderColor: COLORS.error,
     backgroundColor: COLORS.errorLight,
   },
   logoutText: { ...TYPOGRAPHY.h4, color: COLORS.error },
