@@ -27,6 +27,7 @@ import {
   Thermometer,
   Camera,
   TrendingDown,
+  TrendingUp,
   Sparkles,
   Bot,
   X,
@@ -35,6 +36,12 @@ import {
   BatteryCharging,
   User,
   Flame,
+  Globe,
+  TreePine,
+  Car,
+  ChevronRight,
+  Target,
+  CircleCheckBig,
 } from "lucide-react-native";
 import StyledCard from "../components/StyledCard";
 import StatCard from "../components/StatCard";
@@ -48,7 +55,7 @@ import {
 } from "../theme/theme";
 import { useGP } from "../context/GPContext";
 import { generateEnergyData, computeQuickStats, fetchEnergyFromAPI, fetchQuickStatsFromAPI } from "../services/energyDataService";
-import { NOTIFICATIONS } from "../services/notificationData";
+import { generateSmartNotifications } from "../services/notificationData";
 import { USER_PROFILE } from "../data/profileData";
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 44;
@@ -213,6 +220,7 @@ export default function HomeScreen({ navigation }) {
   const [menuVisible, setMenuVisible] = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
   const [notifRead, setNotifRead] = useState(false);
+  const [impactVisible, setImpactVisible] = useState(false);
   const { totalGP, completeQuest, completedQuestIds } = useGP();
 
   const greenUpDone = taskDone || completedQuestIds.has("ac25");
@@ -256,6 +264,27 @@ export default function HomeScreen({ navigation }) {
     () => chartData.reduce((a, b) => (a.value > b.value ? a : b)),
     [chartData],
   );
+
+  // ── National Impact computed values ──
+  const co2SavedToday = useMemo(() => {
+    // Average SG household ~13 kWh/day. Savings from optimisation ~8%
+    const dailyData = energyData.daily?.data ?? [];
+    const dailyKwh = dailyData.reduce((s, d) => s + d.value, 0);
+    return Math.round(dailyKwh * 0.08 * 0.4082 * 10) / 10; // 0.4082 kg CO2/kWh SG grid factor
+  }, [energyData]);
+
+  // Scale to 10% of ~1.3M SG households
+  const nationalTonnes = useMemo(() => Math.round(co2SavedToday * 130000 / 1000), [co2SavedToday]);
+  const carKmEquiv = useMemo(() => Math.round(nationalTonnes * 1000 / 0.12), [nationalTonnes]); // ~0.12 kg per km
+  const treesEquiv = useMemo(() => Math.round(nationalTonnes * 1000 / 21.77), [nationalTonnes]); // ~21.77 kg per tree/year
+  const greenPlan2030Pct = 38; // Singapore Green Plan progress placeholder
+
+  // ── Smart notifications from daily energy data ──
+  const notifications = useMemo(
+    () => generateSmartNotifications(energyData.daily?.data ?? []),
+    [energyData],
+  );
+  const hasUnread = notifications.some((n) => !n.read);
 
   async function handleGreenUpVerify() {
     if (greenUpDone) return;
@@ -312,7 +341,7 @@ export default function HomeScreen({ navigation }) {
             <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8} onPress={handleOpenNotifications}>
               <Bell size={20} color={COLORS.textHeading} strokeWidth={2} />
             </TouchableOpacity>
-            {!notifRead && <View style={styles.notifDot} />}
+            {!notifRead && hasUnread && <View style={styles.notifDot} />}
           </View>
         </View>
         <View style={styles.gpRow}>
@@ -332,7 +361,7 @@ export default function HomeScreen({ navigation }) {
         {/* ──────────────────────────────────────────────────────────────── */}
         {/* SECTION 1: Appliance Energy Breakdown                          */}
         {/* ──────────────────────────────────────────────────────────────── */}
-        <StyledCard delay={0}>
+        <StyledCard delay={0} style={styles.breakdownCard}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Energy Breakdown</Text>
             <PeriodPills selected={period} onSelect={setPeriod} />
@@ -435,9 +464,6 @@ export default function HomeScreen({ navigation }) {
               {" "}and switch to{" "}
               <Text style={{ fontWeight: "700", color: COLORS.textHeading }}>Eco Mode</Text>.
             </Text>
-            <Text style={styles.recoSub}>
-              This could reduce cooling energy consumption by up to 12%.
-            </Text>
             <View style={styles.recoMetrics}>
               <View style={styles.recoMetricPill}>
                 <TrendingDown size={12} color={COLORS.mint} strokeWidth={2.5} />
@@ -470,7 +496,7 @@ export default function HomeScreen({ navigation }) {
             </View>
 
             <Text style={styles.greenUpBody}>
-              Submit a photo of your thermostat settings to earn GreenUp credits.
+              Snap a photo of your thermostat to earn GreenUp credits.
             </Text>
 
             {greenUpDone ? (
@@ -491,6 +517,46 @@ export default function HomeScreen({ navigation }) {
               </TouchableOpacity>
             )}
           </View>
+        </FadeInView>
+
+        {/* ──────────────────────────────────────────────────────────────── */}
+        {/* SECTION 4.5: National Impact Card                              */}
+        {/* ──────────────────────────────────────────────────────────────── */}
+        <FadeInView delay={280}>
+          <TouchableOpacity
+            style={styles.impactCard}
+            activeOpacity={0.85}
+            onPress={() => setImpactVisible(true)}
+          >
+            <View style={styles.impactHeader}>
+              <View style={styles.impactIconCircle}>
+                <Globe size={20} color="#FFFFFF" strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.impactTitle}>National Impact</Text>
+              </View>
+              <ChevronRight size={18} color={COLORS.textMuted} strokeWidth={2} />
+            </View>
+
+            <View style={styles.impactStatsRow}>
+              <View style={styles.impactStatItem}>
+                <Text style={styles.impactStatValue}>{co2SavedToday} kg</Text>
+                <Text style={styles.impactStatLabel}>CO2 saved today</Text>
+              </View>
+              <View style={styles.impactDivider} />
+              <View style={styles.impactStatItem}>
+                <Text style={styles.impactStatValue}>{nationalTonnes}t</Text>
+                <Text style={styles.impactStatLabel}>if 10% adopt</Text>
+              </View>
+            </View>
+
+            <View style={styles.impactFooter}>
+              <Text style={styles.impactFooterText}>
+                Singapore Green Plan 2030
+              </Text>
+              <ChevronRight size={14} color="#00897B" strokeWidth={2} />
+            </View>
+          </TouchableOpacity>
         </FadeInView>
 
         {/* ──────────────────────────────────────────────────────────────── */}
@@ -584,12 +650,28 @@ export default function HomeScreen({ navigation }) {
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
-              {NOTIFICATIONS.map((notif) => {
+              {notifications.map((notif) => {
                 const NIcon = NOTIF_ICONS[notif.icon] ?? Bell;
+                const isNudge = notif.type === "nudge";
+                const isCongrats = notif.type === "congrats";
                 return (
-                  <View key={notif.id} style={[styles.notifItem, !notif.read && styles.notifItemUnread]}>
-                    <View style={styles.notifIconCircle}>
-                      <NIcon size={16} color={COLORS.mint} strokeWidth={2} />
+                  <View key={notif.id} style={[
+                    styles.notifItem,
+                    isNudge && styles.notifItemNudge,
+                    isCongrats && styles.notifItemCongrats,
+                  ]}>
+                    <View style={[
+                      styles.notifIconCircle,
+                      isNudge && { backgroundColor: "#FEF3C7" },
+                      isCongrats && { backgroundColor: COLORS.mintPale },
+                    ]}>
+                      {isNudge ? (
+                        <TrendingUp size={16} color="#D97706" strokeWidth={2} />
+                      ) : isCongrats ? (
+                        <CircleCheckBig size={16} color={COLORS.mint} strokeWidth={2} />
+                      ) : (
+                        <NIcon size={16} color={COLORS.mint} strokeWidth={2} />
+                      )}
                     </View>
                     <View style={{ flex: 1 }}>
                       <View style={styles.notifItemHeader}>
@@ -602,6 +684,100 @@ export default function HomeScreen({ navigation }) {
                   </View>
                 );
               })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── National Impact Detail Modal ── */}
+      <Modal visible={impactVisible} animationType="slide" transparent onRequestClose={() => setImpactVisible(false)}>
+        <View style={styles.impactModalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setImpactVisible(false)} />
+          <View style={styles.impactModalSheet}>
+            <View style={styles.notifHandle} />
+            <View style={styles.impactModalHeader}>
+              <Globe size={22} color={COLORS.mint} strokeWidth={2} />
+              <Text style={styles.impactModalTitle}>National Impact</Text>
+              <TouchableOpacity onPress={() => setImpactVisible(false)} style={{ padding: SPACING.xs }}>
+                <X size={20} color={COLORS.textMuted} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Green Plan 2030 Progress */}
+              <View style={styles.impactProgressSection}>
+                <Text style={styles.impactSectionLabel}>Singapore Green Plan 2030</Text>
+                <View style={styles.impactRingWrap}>
+                  <Svg width={130} height={130}>
+                    <Circle
+                      cx={65} cy={65} r={52}
+                      stroke={COLORS.borderLight} strokeWidth={12} fill="none"
+                    />
+                    <Circle
+                      cx={65} cy={65} r={52}
+                      stroke={COLORS.mint} strokeWidth={12} fill="none"
+                      strokeDasharray={`${(greenPlan2030Pct / 100) * 2 * Math.PI * 52} ${2 * Math.PI * 52}`}
+                      strokeLinecap="round"
+                      rotation={-90} origin="65, 65"
+                    />
+                  </Svg>
+                  <View style={styles.impactRingCenter}>
+                    <Text style={styles.impactRingPct}>{greenPlan2030Pct}%</Text>
+                    <Text style={styles.impactRingLabel}>Progress</Text>
+                  </View>
+                </View>
+                <Text style={styles.impactProgressSub}>
+                  Household energy optimisation target
+                </Text>
+              </View>
+
+              {/* Your Savings Today */}
+              <View style={styles.impactDetailCard}>
+                <Target size={18} color={COLORS.mint} strokeWidth={2} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.impactDetailLabel}>Your Savings Today</Text>
+                  <Text style={styles.impactDetailValue}>{co2SavedToday} kg CO2</Text>
+                </View>
+              </View>
+
+              {/* National Projection */}
+              <View style={styles.impactProjectionCard}>
+                <Text style={styles.impactProjectionHeader}>
+                  If 10% of Singapore households adopt this
+                </Text>
+                <Text style={styles.impactProjectionValue}>
+                  {nationalTonnes} tonnes CO2/day
+                </Text>
+
+                <View style={styles.impactEquivRow}>
+                  <View style={styles.impactEquivItem}>
+                    <View style={[styles.impactEquivIcon, { backgroundColor: "#EFF6FF" }]}>
+                      <Car size={18} color="#3B82F6" strokeWidth={2} />
+                    </View>
+                    <Text style={styles.impactEquivValue}>{carKmEquiv.toLocaleString()}</Text>
+                    <Text style={styles.impactEquivLabel}>car km removed</Text>
+                  </View>
+                  <View style={styles.impactEquivItem}>
+                    <View style={[styles.impactEquivIcon, { backgroundColor: COLORS.mintPale }]}>
+                      <TreePine size={18} color={COLORS.mint} strokeWidth={2} />
+                    </View>
+                    <Text style={styles.impactEquivValue}>{treesEquiv.toLocaleString()}</Text>
+                    <Text style={styles.impactEquivLabel}>trees planted equiv.</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* 1.5°C Global Goal */}
+              <View style={styles.impactGoalCard}>
+                <View style={styles.impactGoalHeader}>
+                  <Thermometer size={16} color="#EF4444" strokeWidth={2} />
+                  <Text style={styles.impactGoalTitle}>Global 1.5°C Goal</Text>
+                </View>
+                <Text style={styles.impactGoalBody}>
+                  Singapore aims to halve emissions by 2030 and achieve net zero
+                  by 2050. Every kWh saved contributes to keeping warming below 1.5°C.
+                </Text>
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -642,6 +818,7 @@ const styles = StyleSheet.create({
   gpPillText: { ...TYPOGRAPHY.captionBold, color: COLORS.mintDark },
 
   // ── Chart card
+  breakdownCard: {},
   cardHeader: {
     flexDirection: "row", justifyContent: "space-between",
     alignItems: "center", marginBottom: 4,
@@ -726,9 +903,9 @@ const styles = StyleSheet.create({
   greenUpCard: {
     backgroundColor: COLORS.card, borderRadius: RADIUS.card,
     padding: SPACING.lg, gap: SPACING.md,
-    borderWidth: 2, borderColor: COLORS.mint, ...SHADOWS.mint,
+    borderWidth: 1.5, borderColor: COLORS.mint, ...SHADOWS.md,
   },
-  greenUpCardDone: { borderColor: COLORS.mintLight, ...SHADOWS.md },
+  greenUpCardDone: { borderColor: COLORS.borderLight },
   greenUpHeader: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
   greenUpIconCircle: {
     width: 36, height: 36, borderRadius: 18,
@@ -763,7 +940,7 @@ const styles = StyleSheet.create({
   alertCard: {
     flexDirection: "row", alignItems: "flex-start", gap: SPACING.md,
     backgroundColor: COLORS.warningLight, borderRadius: RADIUS.card,
-    padding: SPACING.base, borderLeftWidth: 4, borderLeftColor: COLORS.warning, ...SHADOWS.xs,
+    padding: SPACING.base, ...SHADOWS.xs,
   },
   alertTitle: { ...TYPOGRAPHY.captionBold, color: COLORS.warning },
   alertBody: { ...TYPOGRAPHY.caption, color: "#78350F", marginTop: 2, lineHeight: 16 },
@@ -816,6 +993,14 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight,
   },
   notifItemUnread: { backgroundColor: COLORS.mintPale, marginHorizontal: -SPACING.lg, paddingHorizontal: SPACING.lg, borderRadius: RADIUS.md },
+  notifItemNudge: {
+    backgroundColor: "#FFFBEB", marginHorizontal: -SPACING.lg,
+    paddingHorizontal: SPACING.lg, borderRadius: RADIUS.md,
+  },
+  notifItemCongrats: {
+    backgroundColor: COLORS.mintPale, marginHorizontal: -SPACING.lg,
+    paddingHorizontal: SPACING.lg, borderRadius: RADIUS.md,
+  },
   notifIconCircle: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.mintLight,
     alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2,
@@ -825,4 +1010,84 @@ const styles = StyleSheet.create({
   notifUnreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.mint },
   notifItemBody: { ...TYPOGRAPHY.bodySm, color: COLORS.textBody, lineHeight: 18, marginTop: 2 },
   notifItemTime: { ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginTop: 4 },
+
+  // ── National Impact Card (on dashboard)
+  impactCard: {
+    backgroundColor: COLORS.card, borderRadius: RADIUS.card,
+    padding: SPACING.lg, gap: SPACING.md,
+    borderWidth: 1, borderColor: COLORS.borderLight, ...SHADOWS.md,
+  },
+  impactHeader: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  impactIconCircle: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: "#00897B",
+    alignItems: "center", justifyContent: "center",
+  },
+  impactLabel: { ...TYPOGRAPHY.micro, color: "#00897B", letterSpacing: 1 },
+  impactTitle: { ...TYPOGRAPHY.bodyMd, color: COLORS.textHeading, fontWeight: "700" },
+  impactStatsRow: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: COLORS.mintPale, borderRadius: RADIUS.md, padding: SPACING.md,
+  },
+  impactStatItem: { flex: 1, alignItems: "center" },
+  impactStatValue: { ...TYPOGRAPHY.h3, color: "#00897B" },
+  impactStatLabel: { ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginTop: 2 },
+  impactDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
+  impactFooter: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
+  },
+  impactFooterText: { ...TYPOGRAPHY.captionBold, color: "#00897B" },
+
+  // ── Impact Detail Modal
+  impactModalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
+  impactModalSheet: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxxl, paddingTop: SPACING.md,
+    maxHeight: "85%", ...SHADOWS.lg,
+  },
+  impactModalHeader: {
+    flexDirection: "row", alignItems: "center", gap: SPACING.sm, marginBottom: SPACING.lg,
+  },
+  impactModalTitle: { ...TYPOGRAPHY.h3, color: COLORS.textHeading, flex: 1 },
+
+  impactProgressSection: { alignItems: "center", marginBottom: SPACING.lg },
+  impactSectionLabel: { ...TYPOGRAPHY.h4, color: COLORS.textHeading, marginBottom: SPACING.md },
+  impactRingWrap: { alignItems: "center", justifyContent: "center", marginBottom: SPACING.sm },
+  impactRingCenter: { position: "absolute", alignItems: "center" },
+  impactRingPct: { fontSize: 28, fontWeight: "800", color: COLORS.mint },
+  impactRingLabel: { ...TYPOGRAPHY.caption, color: COLORS.textMuted, marginTop: 2 },
+  impactProgressSub: { ...TYPOGRAPHY.bodySm, color: COLORS.textMuted, textAlign: "center" },
+
+  impactDetailCard: {
+    flexDirection: "row", alignItems: "center", gap: SPACING.md,
+    backgroundColor: COLORS.mintPale, borderRadius: RADIUS.md, padding: SPACING.base,
+    marginBottom: SPACING.md,
+  },
+  impactDetailLabel: { ...TYPOGRAPHY.caption, color: COLORS.textMuted },
+  impactDetailValue: { ...TYPOGRAPHY.h3, color: COLORS.mint, marginTop: 2 },
+
+  impactProjectionCard: {
+    backgroundColor: "#F0F4FF", borderRadius: RADIUS.md, padding: SPACING.base,
+    marginBottom: SPACING.md, gap: SPACING.sm,
+  },
+  impactProjectionHeader: { ...TYPOGRAPHY.bodySm, color: COLORS.textBody, lineHeight: 20 },
+  impactProjectionValue: { ...TYPOGRAPHY.h2, color: COLORS.textHeading },
+
+  impactEquivRow: { flexDirection: "row", gap: SPACING.md, marginTop: SPACING.xs },
+  impactEquivItem: { flex: 1, alignItems: "center", gap: 4 },
+  impactEquivIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: "center", justifyContent: "center", marginBottom: 2,
+  },
+  impactEquivValue: { ...TYPOGRAPHY.h4, color: COLORS.textHeading },
+  impactEquivLabel: { ...TYPOGRAPHY.caption, color: COLORS.textMuted, textAlign: "center" },
+
+  impactGoalCard: {
+    backgroundColor: "#FFF5F5", borderRadius: RADIUS.md, padding: SPACING.base,
+    gap: SPACING.sm, marginBottom: SPACING.md,
+  },
+  impactGoalHeader: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  impactGoalTitle: { ...TYPOGRAPHY.h4, color: "#B91C1C" },
+  impactGoalBody: { ...TYPOGRAPHY.bodySm, color: COLORS.textBody, lineHeight: 20 },
 });
