@@ -209,9 +209,14 @@ def get_readings(num_hours: int) -> tuple[pd.DataFrame, str]:
         try:
             df = fetch_from_clickhouse(num_hours)
             if len(df) > 0:
+                print(f"✓ ClickHouse returned {len(df)} rows for {num_hours}h query")
                 return df, "clickhouse"
+            else:
+                print(f"⚠ ClickHouse returned 0 rows for {num_hours}h query")
         except Exception as e:
             print(f"⚠ ClickHouse query failed: {e}")
+    else:
+        print("⚠ CH_CLIENT is None, using synthetic data")
     return generate_readings(num_hours), "synthetic"
 
 
@@ -439,7 +444,7 @@ def health_check():
         "model_loaded": MODEL is not None,
         "model_accuracy": MODEL_ACCURACY,
         "clickhouse_connected": CH_CLIENT is not None,
-        "gemini_configured": GEMINI_CLIENT is not None,
+        "gemini_configured": len(GEMINI_CLIENTS) > 0,
         "gemini_key_tail": f"...{GEMINI_API_KEY[-4:]}" if len(GEMINI_API_KEY) >= 4 else "not set",
     }
 
@@ -448,13 +453,16 @@ def health_check():
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-GEMINI_CLIENT = None
+# Models to try in order — if one model's quota is exhausted, try the next
+GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
+GEMINI_CLIENTS = []
 try:
     import google.generativeai as genai
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
-        GEMINI_CLIENT = genai.GenerativeModel("gemini-2.0-flash")
-        print(f"✓ Gemini AI configured (key ends ...{GEMINI_API_KEY[-4:]})")
+        for model_name in GEMINI_MODELS:
+            GEMINI_CLIENTS.append(genai.GenerativeModel(model_name))
+        print(f"✓ Gemini AI configured with {len(GEMINI_CLIENTS)} model fallbacks (key ends ...{GEMINI_API_KEY[-4:]})")
     else:
         print("⚠ No GEMINI_API_KEY set. Chat will use fallback responses.")
 except ImportError:
@@ -550,10 +558,10 @@ Period context: {period}. Tailor the insight to this time period.
 Make every response unique and specific to the data. Avoid generic advice.
 Icon values must be one of: zap, check, lightbulb, thermometer, clock, trending-up, trending-down."""
 
-    if GEMINI_CLIENT is not None:
-        for attempt in range(2):
+    if len(GEMINI_CLIENTS) > 0:
+        for client in GEMINI_CLIENTS:
             try:
-                response = GEMINI_CLIENT.generate_content(prompt)
+                response = client.generate_content(prompt)
                 text = response.text.strip()
                 # Strip markdown code fences if present
                 if text.startswith("```"):
@@ -563,14 +571,16 @@ Icon values must be one of: zap, check, lightbulb, thermometer, clock, trending-
                 result = {"source": "gemini", **data}
                 _ai_cache[period] = result
                 _ai_cache_ts[period] = _time.time()
+                print(f"✓ Gemini insight generated using {client.model_name}")
                 return result
             except Exception as e:
                 err_str = str(e)
-                if "429" in err_str and attempt == 0:
-                    print(f"⚠ Gemini rate limited (429), retrying in 5s...")
-                    _time.sleep(5)
+                if "429" in err_str:
+                    print(f"⚠ Gemini {client.model_name} rate limited (429), trying next model...")
                     continue
-                print(f"⚠ Gemini AI insight failed ({e}), using fallback")
+                print(f"⚠ Gemini {client.model_name} failed ({e}), trying next model...")
+                continue
+        print("⚠ All Gemini models exhausted, using fallback")
 
     # Fallback
     return {
