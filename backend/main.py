@@ -20,6 +20,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import random
 import os
+import threading
 
 app = FastAPI(title="JouleBuddy ML API")
 
@@ -41,13 +42,15 @@ except ImportError:
     pass
 
 CLICKHOUSE_HOST = os.environ.get("CLICKHOUSE_HOST", "")
-CLICKHOUSE_PORT = int(os.environ.get("CLICKHOUSE_PORT", "8443"))
+CLICKHOUSE_PORT = int(os.environ.get("CLICKHOUSE_PORT", "443"))
 CLICKHOUSE_USER = os.environ.get("CLICKHOUSE_USER", "default")
 CLICKHOUSE_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "")
 
 # ── ClickHouse Client ───────────────────────────────────────────────────────
 
 CH_CLIENT = None
+
+print(f"   ClickHouse config: host={CLICKHOUSE_HOST}, port={CLICKHOUSE_PORT}, user={CLICKHOUSE_USER}, pass={'***' + CLICKHOUSE_PASSWORD[-3:] if CLICKHOUSE_PASSWORD else 'NOT SET'}")
 
 try:
     import clickhouse_connect
@@ -110,10 +113,13 @@ CHART_COLORS = {
 
 # ── Data Fetching ────────────────────────────────────────────────────────────
 
+_ch_lock = threading.Lock()
+
 def fetch_from_clickhouse(num_hours: int) -> pd.DataFrame:
     """
     Query real energy data from ClickHouse Cloud.
     Returns a DataFrame with the columns needed for ML prediction.
+    Uses a lock to prevent concurrent queries on the same session.
     """
     # Get a representative sample of rows from the dataset.
     # We use LIMIT + ORDER BY to get a contiguous time window.
@@ -135,7 +141,8 @@ def fetch_from_clickhouse(num_hours: int) -> pd.DataFrame:
     ORDER BY Date DESC, Time DESC
     LIMIT {num_hours}
     """
-    result = CH_CLIENT.query(query)
+    with _ch_lock:
+        result = CH_CLIENT.query(query)
     columns = list(result.column_names) if hasattr(result, 'column_names') else [
         "Global_active_power", "Global_reactive_power", "Voltage",
         "Global_intensity", "Sub_metering_1", "Sub_metering_2", "Sub_metering_3",
@@ -432,6 +439,8 @@ def health_check():
         "model_loaded": MODEL is not None,
         "model_accuracy": MODEL_ACCURACY,
         "clickhouse_connected": CH_CLIENT is not None,
+        "gemini_configured": GEMINI_CLIENT is not None,
+        "gemini_key_tail": f"...{GEMINI_API_KEY[-4:]}" if len(GEMINI_API_KEY) >= 4 else "not set",
     }
 
 
@@ -445,7 +454,7 @@ try:
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
         GEMINI_CLIENT = genai.GenerativeModel("gemini-2.0-flash")
-        print("✓ Gemini AI configured")
+        print(f"✓ Gemini AI configured (key ends ...{GEMINI_API_KEY[-4:]})")
     else:
         print("⚠ No GEMINI_API_KEY set. Chat will use fallback responses.")
 except ImportError:
@@ -542,20 +551,26 @@ Make every response unique and specific to the data. Avoid generic advice.
 Icon values must be one of: zap, check, lightbulb, thermometer, clock, trending-up, trending-down."""
 
     if GEMINI_CLIENT is not None:
-        try:
-            response = GEMINI_CLIENT.generate_content(prompt)
-            text = response.text.strip()
-            # Strip markdown code fences if present
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1]
-                text = text.rsplit("```", 1)[0]
-            data = _json.loads(text)
-            result = {"source": "gemini", **data}
-            _ai_cache[period] = result
-            _ai_cache_ts[period] = _time.time()
-            return result
-        except Exception as e:
-            print(f"⚠ Gemini AI insight failed ({e}), using fallback")
+        for attempt in range(2):
+            try:
+                response = GEMINI_CLIENT.generate_content(prompt)
+                text = response.text.strip()
+                # Strip markdown code fences if present
+                if text.startswith("```"):
+                    text = text.split("\n", 1)[1]
+                    text = text.rsplit("```", 1)[0]
+                data = _json.loads(text)
+                result = {"source": "gemini", **data}
+                _ai_cache[period] = result
+                _ai_cache_ts[period] = _time.time()
+                return result
+            except Exception as e:
+                err_str = str(e)
+                if "429" in err_str and attempt == 0:
+                    print(f"⚠ Gemini rate limited (429), retrying in 5s...")
+                    _time.sleep(5)
+                    continue
+                print(f"⚠ Gemini AI insight failed ({e}), using fallback")
 
     # Fallback
     return {
@@ -594,7 +609,7 @@ Icon values must be one of: zap, check, lightbulb, thermometer, clock, trending-
 
 
 # ── Keep-alive: ping ourselves every 10 min so Render free tier doesn't sleep ─
-import threading, urllib.request
+import urllib.request
 
 def _keep_alive():
     while True:
